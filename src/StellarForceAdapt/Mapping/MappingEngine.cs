@@ -18,17 +18,16 @@ public class MappingEngine : IDisposable
     private List<RuleState> _activeRules = [];
     private bool _running;
 
-    // ForceAdapt effect tracking — prevents the 200Hz loop from clearing active effects
+    // ForceAdapt effect tracking — prevents the 200Hz loop from clearing active effects.
+    // Stores the last-applied V2 (side, mode) pair and its expiry so we can cleanly
+    // revert to Off once the rule's duration elapses.
     private ForceAdaptEffectState? _activeForceAdapt;
     private DateTime _forceAdaptExpiry = DateTime.MinValue;
 
     private struct ForceAdaptEffectState
     {
         public ForceAdaptProtocol.ForceAdaptMode Mode;
-        public byte Position;
-        public byte Intensity;
-        public byte Speed;
-        public byte Flags;
+        public ForceAdaptProtocol.TriggerSide? Side; // null = both triggers
     }
 
 
@@ -132,10 +131,15 @@ public class MappingEngine : IDisposable
         var gameState = _gameMonitor.CurrentState;
         if (!gameState.IsRunning) return;
 
-        // Check if a ForceAdapt effect has expired
+        // Check if a ForceAdapt effect has expired — revert to Off on the
+        // same channel(s) so the trigger returns to a neutral analog axis.
         if (_activeForceAdapt != null && DateTime.UtcNow >= _forceAdaptExpiry)
         {
-            _device.SetForceAdaptEffect(ForceAdaptProtocol.ForceAdaptMode.Off, flags: _activeForceAdapt.Value.Flags);
+            var prev = _activeForceAdapt.Value;
+            if (prev.Side.HasValue)
+                _device.ApplyTriggerEffect(prev.Side.Value, ForceAdaptProtocol.ForceAdaptMode.Off);
+            else
+                _device.ApplyTriggerEffectBoth(ForceAdaptProtocol.ForceAdaptMode.Off);
             _activeForceAdapt = null;
         }
 
@@ -233,32 +237,45 @@ public class MappingEngine : IDisposable
         {
             case EffectType.ForceAdapt:
             {
-                var mode = effect.Mode?.ToLower() switch
+                // V2 (2026-05): map the profile's free-form mode string onto
+                // one of the six firmware modes. Unknown strings default to
+                // Vibration so profiles written against the old V1 enum
+                // (which only had Off/Resistance/Vibration) still behave
+                // sensibly.
+                var mode = effect.Mode?.Trim().ToLowerInvariant() switch
                 {
-                    "pushback" => ForceAdaptProtocol.ForceAdaptMode.Resistance,
-                    "lock" => ForceAdaptProtocol.ForceAdaptMode.Resistance,
-                    "vibrate" => ForceAdaptProtocol.ForceAdaptMode.Vibration,
-                    _ => ForceAdaptProtocol.ForceAdaptMode.Vibration,
+                    "off" or "none" or "clear" => ForceAdaptProtocol.ForceAdaptMode.Off,
+                    "racing" or "pushback" or "damp" or "damping"
+                                               => ForceAdaptProtocol.ForceAdaptMode.Racing,
+                    "machinegun" or "burst" or "mg"
+                                               => ForceAdaptProtocol.ForceAdaptMode.Machinegun,
+                    "sniper" or "breakthrough" => ForceAdaptProtocol.ForceAdaptMode.Sniper,
+                    "lock" or "triggerlock" or "resistance"
+                                               => ForceAdaptProtocol.ForceAdaptMode.TriggerLock,
+                    "vibrate" or "vibration" or "haptic"
+                                               => ForceAdaptProtocol.ForceAdaptMode.Vibration,
+                    _                          => ForceAdaptProtocol.ForceAdaptMode.Vibration,
                 };
 
-                byte flags = effect.Target switch
+                // Route to LT / RT / Both based on the rule's Target field.
+                ForceAdaptProtocol.TriggerSide? side = effect.Target switch
                 {
-                    TriggerTarget.Left => (byte)0x01,
-                    TriggerTarget.Right => (byte)0x02,
-                    TriggerTarget.Both => (byte)0x03,
-                    _ => (byte)0x03,
+                    TriggerTarget.Left  => ForceAdaptProtocol.TriggerSide.LT,
+                    TriggerTarget.Right => ForceAdaptProtocol.TriggerSide.RT,
+                    _                   => null, // Both
                 };
 
-                _device.SetForceAdaptEffect(mode, effect.Position, effect.Intensity, effect.Speed, flags);
+                if (side.HasValue)
+                    _device.ApplyTriggerEffect(side.Value, mode);
+                else
+                    _device.ApplyTriggerEffectBoth(mode);
 
-                // Track active ForceAdapt effect so EvaluateRules doesn't clear it
+                // Remember the active effect so the 200Hz loop doesn't stomp
+                // it with default rumble, and so it can be cleanly reverted.
                 _activeForceAdapt = new ForceAdaptEffectState
                 {
                     Mode = mode,
-                    Position = effect.Position,
-                    Intensity = effect.Intensity,
-                    Speed = effect.Speed,
-                    Flags = flags,
+                    Side = side,
                 };
                 _forceAdaptExpiry = effect.DurationMs > 0
                     ? DateTime.UtcNow.AddMilliseconds(effect.DurationMs)

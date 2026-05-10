@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Security.Principal;
 using System.Threading;
 using System.Windows;
@@ -14,6 +15,20 @@ namespace StellarForceAdapt;
 
 public partial class MainWindow : Window
 {
+    // Win32 console attach so our WPF app gets a real resizable/scrollable log window.
+    // Far more readable than the cramped in-app ListBox when debugging HID traffic.
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern bool AllocConsole();
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern bool SetConsoleOutputCP(uint wCodePageID);
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern bool SetConsoleTitle(string lpConsoleTitle);
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern nint GetStdHandle(int nStdHandle);
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern bool GetConsoleScreenBufferInfo(nint hConsoleOutput, out CONSOLE_SCREEN_BUFFER_INFO info);
+    [DllImport("kernel32.dll", SetLastError = true)] private static extern bool SetConsoleScreenBufferSize(nint hConsoleOutput, COORD dwSize);
+    [StructLayout(LayoutKind.Sequential)] private struct COORD { public short X, Y; }
+    [StructLayout(LayoutKind.Sequential)] private struct SMALL_RECT { public short Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] private struct CONSOLE_SCREEN_BUFFER_INFO
+    { public COORD dwSize, dwCursorPosition; public short wAttributes; public SMALL_RECT srWindow; public COORD dwMaximumWindowSize; }
+
+    private static bool _consoleAttached;
     private readonly FlyDigiDevice _device = new();
     private readonly HIDGamepadReader _gamepad = new();
     private readonly StellarBladeMonitor _gameMonitor = new();
@@ -40,6 +55,7 @@ public partial class MainWindow : Window
 
     public MainWindow()
     {
+        EnsureConsoleAttached();
         InitializeComponent();
         DataContext = this;
 
@@ -52,6 +68,11 @@ public partial class MainWindow : Window
         _mappingPath = Path.Combine(_profilesDir, "controller_mapping.json");
         _logFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "log.txt");
         File.WriteAllText(_logFilePath, $"=== StellarForceAdapt Log {DateTime.Now:yyyy-MM-dd HH:mm:ss} ===\n");
+        if (_consoleAttached)
+        {
+            Console.WriteLine($"[init] 日志文件: {_logFilePath}");
+            Console.WriteLine($"[init] PowerShell 实时跟踪: Get-Content -Wait -Tail 40 '{_logFilePath}'");
+        }
 
         _engine = new MappingEngine(_device, _gamepad, _gameMonitor)
         {
@@ -928,11 +949,155 @@ public partial class MainWindow : Window
             // Give Windows time to release the HID handle
             Thread.Sleep(400);
 
+            bool stillRunning = FlyDigiDevice.IsSpaceStationRunning();
+            Dispatcher.Invoke(() => Log(stillRunning
+                ? "⚠ SpaceStation 进程仍在运行（可能需要管理员权限终止）"
+                : "🔍 SpaceStation 进程已确认关闭"));
+
             // Re-open our side so we get a fresh, exclusive handle
             bool reconn = _device.TryReconnect();
             Dispatcher.Invoke(() => Log(reconn
                 ? "🔌 HID 已重连，现在独占 mi_02，可以重测 Replay/探测按钮"
                 : "❌ HID 重连失败，请检查设备是否仍插着"));
+        });
+    }
+
+    /// <summary>
+    /// V2 test button: send a single (side, mode) effect via the new byte-exact
+    /// template API. The Tag on the clicked button encodes the pair as
+    /// "SIDE:MODE" (e.g. "LT:Vibration").
+    /// </summary>
+    private void V2ApplyEffect_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Button btn) return;
+        var tag = btn.Tag?.ToString();
+        if (string.IsNullOrEmpty(tag) || !tag.Contains(':')) return;
+
+        var parts = tag.Split(':', 2);
+        if (!Enum.TryParse<StellarForceAdapt.HID.ForceAdaptProtocol.TriggerSide>(parts[0], out var side))
+            return;
+        if (!Enum.TryParse<StellarForceAdapt.HID.ForceAdaptProtocol.ForceAdaptMode>(parts[1], out var mode))
+            return;
+
+        if (!_device.IsConnected)
+        {
+            Log("⚠️ 手柄未连接");
+            return;
+        }
+
+        _ = Task.Run(() =>
+        {
+            Dispatcher.Invoke(() => Log($"🚀 V2 发送 [{side} {mode}]..."));
+            var (ok, details) = _device.ApplyTriggerEffect(side, mode);
+            Dispatcher.Invoke(() => Log($"🚀 V2 {(ok ? "OK" : "部分失败")}  {details}"));
+            Dispatcher.Invoke(() => Log($"   ⏱ 现在拉 {side}, 感受{mode}效果"));
+        });
+    }
+
+    /// <summary>
+    /// V2 convenience: clear both triggers back to mode Off (no effect).
+    /// </summary>
+    private void V2ClearBoth_Click(object sender, RoutedEventArgs e)
+    {
+        if (!_device.IsConnected) { Log("⚠️ 手柄未连接"); return; }
+        _ = Task.Run(() =>
+        {
+            Dispatcher.Invoke(() => Log("🧹 V2 清空双扳机 (LT Off + RT Off)..."));
+            var (ok, details) = _device.ApplyTriggerEffectBoth(
+                StellarForceAdapt.HID.ForceAdaptProtocol.ForceAdaptMode.Off);
+            Dispatcher.Invoke(() => Log($"🧹 {(ok ? "OK" : "失败")}  {details}"));
+        });
+    }
+
+    /// <summary>
+    /// Fire the FULL 6-packet activation sequence for Slot 2:
+    /// 0x11 → A4 → A5 → A6 → 0x51(ACTIVATE) → 0x51(FINALIZE).
+    /// The two 0x51 packets were the missing piece — previous 3/4-packet replays got full ACKs
+    /// yet the triggers stayed idle because the firmware never received the "apply" command.
+    /// </summary>
+    private void FullActivationSlot2_Click(object sender, RoutedEventArgs e)
+    {
+        _ = Task.Run(() =>
+        {
+            Dispatcher.Invoke(() => Log("🚀 发送完整激活序列 Slot 2 (6 packets)..."));
+            var (ok, details) = _device.ReplayFullActivation(2);
+            Dispatcher.Invoke(() => Log($"🚀 [Slot 2 完整激活] {(ok ? "OK" : "部分失败")}  {details}"));
+            Dispatcher.Invoke(() => Log("   ⏱ 现在拉 LT 和 RT, 感受阻尼/扳机锁/振动"));
+        });
+    }
+
+    /// <summary>
+    /// Iterate all 4 captured slots with the FULL 6-packet activation sequence,
+    /// 1200 ms between slots so the user has time to feel each configuration.
+    /// </summary>
+    private void FullActivationAllSlots_Click(object sender, RoutedEventArgs e)
+    {
+        _ = Task.Run(() =>
+        {
+            Dispatcher.Invoke(() => Log("🚀 开始轮询 4 个 Slot 的完整激活序列..."));
+            for (int slot = 1; slot <= 4; slot++)
+            {
+                var (ok, details) = _device.ReplayFullActivation(slot);
+                int s = slot;
+                Dispatcher.Invoke(() => Log($"🚀 [Slot {s} 完整激活] {(ok ? "OK" : "失败")}  {details}"));
+                Dispatcher.Invoke(() => Log($"   ⏱ 当前应是 Slot {s} 效果, 拉 LT/RT 感受 1.2s..."));
+                Thread.Sleep(1200);
+            }
+            Dispatcher.Invoke(() => Log("✅ 轮询完成, 记住是哪个 Slot 让扳机有感觉"));
+        });
+    }
+
+    /// <summary>
+    /// Broadcast MAX strength rumble to every FlyDigi HID interface using 3 methods x 2 report formats.
+    /// Unlike Slot 2 broadcast, rumble is highly perceivable regardless of ForceAdapt protocol correctness,
+    /// so this isolates "interface+method reachable" from "ForceAdapt cmd correct".
+    /// </summary>
+    private void BroadcastStrongRumble_Click(object sender, RoutedEventArgs e)
+    {
+        _ = Task.Run(() =>
+        {
+            Dispatcher.Invoke(() => Log("🔌 临时断开主 HID 连接, 开始强振动广播..."));
+            _device.Disconnect();
+            Thread.Sleep(300);
+
+            FlyDigiDevice.BroadcastStrongRumbleToAllInterfaces(
+                perMethodMs: 1500,
+                perInterfaceMs: 2500,
+                perLineLog: line => Dispatcher.Invoke(() => Log(line)));
+
+            Thread.Sleep(200);
+            bool reconn = _device.TryReconnect();
+            Dispatcher.Invoke(() => Log(reconn
+                ? "🔌 强振动广播完成, 主 HID 已重连"
+                : "❌ 强振动广播完成, 但主 HID 重连失败"));
+        });
+    }
+
+    /// <summary>
+    /// Broadcast a Slot 2 A4/A5/A6 sequence to every FlyDigi HID interface individually,
+    /// using 3 different send mechanisms (HidSharp Write, HidD_SetOutputReport, SetFeature).
+    /// User should pull LT and RT during each pause to feel which interface+method actually drives the hardware.
+    /// IMPORTANT: disconnect our managed device first so the main interface isn't held open.
+    /// </summary>
+    private void BroadcastAllInterfaces_Click(object sender, RoutedEventArgs e)
+    {
+        _ = Task.Run(() =>
+        {
+            // Release our primary handle so enumeration can open every interface freely
+            Dispatcher.Invoke(() => Log("🔌 临时断开主 HID 连接，开始广播..."));
+            _device.Disconnect();
+            Thread.Sleep(300);
+
+            FlyDigiDevice.BroadcastSlot2ToAllInterfaces(
+                interfaceDelayMs: 1500,
+                perLineLog: line => Dispatcher.Invoke(() => Log(line)));
+
+            // Reconnect main handle
+            Thread.Sleep(200);
+            bool reconn = _device.TryReconnect();
+            Dispatcher.Invoke(() => Log(reconn
+                ? "🔌 广播完成，主 HID 已重连"
+                : "❌ 广播完成，但主 HID 重连失败"));
         });
     }
 
@@ -1049,12 +1214,60 @@ public partial class MainWindow : Window
         LogList.Items.Insert(0, entry);
         _logCount++;
 
+        // Mirror to attached console (resizable + scrollable + copyable)
+        if (_consoleAttached)
+        {
+            try { Console.WriteLine(entry); } catch { }
+        }
+
         // Also write to file
         try { File.AppendAllText(_logFilePath, entry + "\n"); } catch { }
 
         // Limit log entries
         while (LogList.Items.Count > 200)
             LogList.Items.RemoveAt(LogList.Items.Count - 1);
+    }
+
+    /// <summary>
+    /// Attach a Win32 console window to this WPF process so the user gets a resizable,
+    /// scrollable, copyable log view alongside the in-app ListBox. We also enlarge the
+    /// screen-buffer to 9999 rows so long HID broadcast reports don't scroll off.
+    /// Called once from the MainWindow ctor; subsequent calls are no-ops.
+    /// </summary>
+    private static void EnsureConsoleAttached()
+    {
+        if (_consoleAttached) return;
+        try
+        {
+            if (!AllocConsole()) return;
+            _consoleAttached = true;
+            SetConsoleOutputCP(65001); // UTF-8, so Chinese + emoji render correctly
+            SetConsoleTitle("StellarForceAdapt · 实时日志");
+
+            // Redirect Console.Out to the newly attached console
+            var stdout = new StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true };
+            Console.SetOut(stdout);
+
+            // Enlarge the scrollback buffer
+            nint h = GetStdHandle(-11); // STD_OUTPUT_HANDLE
+            if (GetConsoleScreenBufferInfo(h, out var info))
+            {
+                SetConsoleScreenBufferSize(h, new COORD { X = Math.Max((short)140, info.dwSize.X), Y = 9999 });
+            }
+
+            Console.WriteLine("=== StellarForceAdapt console attached (UTF-8, 9999 lines scrollback) ===");
+        }
+        catch { /* best-effort, never block app startup */ }
+    }
+
+    /// <summary>Open the log file with the system default editor so user can tail it.</summary>
+    private void OpenLogFile_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(_logFilePath) { UseShellExecute = true });
+        }
+        catch (Exception ex) { Log($"打开日志失败: {ex.Message}"); }
     }
 
     private void SetStatus(string status)

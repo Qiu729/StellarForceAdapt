@@ -202,6 +202,9 @@
                                 </ListBox>
                             </Border>
                             <Button Content="🗑 清空日志" Margin="0,4,0,0" Click="ClearLog_Click" Height="28" FontSize="12" />
+                            <Button Content="📂 打开日志文件 (用外部编辑器实时跟踪)" Margin="0,4,0,0" Click="OpenLogFile_Click" Height="28" FontSize="12" />
+                            <TextBlock Text="提示: 启动时已附加独立控制台窗口 (UTF-8, 9999 行回滚), 在任务栏查找 'StellarForceAdapt · 实时日志'"
+                                       FontSize="10" Foreground="#888" TextWrapping="Wrap" Margin="0,4,0,0" />
                         </StackPanel>
                     </TabItem>
                     <TabItem x:Name="DebugTab" Header="🎮 控制器调试" Background="Transparent" Padding="12,8">
@@ -320,11 +323,59 @@
                                             <Button Grid.Row="1" Grid.Column="1" Content="测试扳机马达" Click="TestRumble_Click" Height="28" FontSize="11" Margin="1" />
                                             <Button Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" Content="停止全部" Click="TestStopAll_Click" Height="28" FontSize="11" Margin="1" Background="#C62828" Foreground="White" />
                                         </Grid>
+                                        <TextBlock Text="V2 ForceAdapt · LT/RT × 6 模式 (字节精确抓包 Replay)"
+                                                   FontSize="12" FontWeight="SemiBold" Margin="0,8,0,2" Foreground="#90CAF9" />
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+                                            <!-- Header row -->
+                                            <TextBlock Grid.Row="0" Grid.Column="0" Text=""   FontSize="10" VerticalAlignment="Center" Margin="2" />
+                                            <TextBlock Grid.Row="0" Grid.Column="1" Text="常规"     FontSize="10" HorizontalAlignment="Center" Foreground="#BBB" />
+                                            <TextBlock Grid.Row="0" Grid.Column="2" Text="赛车"     FontSize="10" HorizontalAlignment="Center" Foreground="#BBB" />
+                                            <TextBlock Grid.Row="0" Grid.Column="3" Text="机枪"     FontSize="10" HorizontalAlignment="Center" Foreground="#BBB" />
+                                            <TextBlock Grid.Row="0" Grid.Column="4" Text="狙击"     FontSize="10" HorizontalAlignment="Center" Foreground="#BBB" />
+                                            <TextBlock Grid.Row="0" Grid.Column="5" Text="扳机锁"   FontSize="10" HorizontalAlignment="Center" Foreground="#BBB" />
+                                            <TextBlock Grid.Row="0" Grid.Column="6" Text="震动"     FontSize="10" HorizontalAlignment="Center" Foreground="#BBB" />
+                                            <!-- LT row -->
+                                            <TextBlock Grid.Row="1" Grid.Column="0" Text="LT" FontSize="11" FontWeight="Bold" VerticalAlignment="Center" Margin="2,0,4,0" />
+                                            <Button Grid.Row="1" Grid.Column="1" Content="Off"  Tag="LT:Off"         Click="V2ApplyEffect_Click" Height="26" FontSize="10" Margin="1" />
+                                            <Button Grid.Row="1" Grid.Column="2" Content="赛车" Tag="LT:Racing"      Click="V2ApplyEffect_Click" Height="26" FontSize="10" Margin="1" />
+                                            <Button Grid.Row="1" Grid.Column="3" Content="机枪" Tag="LT:Machinegun"  Click="V2ApplyEffect_Click" Height="26" FontSize="10" Margin="1" />
+                                            <Button Grid.Row="1" Grid.Column="4" Content="狙击" Tag="LT:Sniper"      Click="V2ApplyEffect_Click" Height="26" FontSize="10" Margin="1" />
+                                            <Button Grid.Row="1" Grid.Column="5" Content="扳锁" Tag="LT:TriggerLock" Click="V2ApplyEffect_Click" Height="26" FontSize="10" Margin="1" />
+                                            <Button Grid.Row="1" Grid.Column="6" Content="震动" Tag="LT:Vibration"   Click="V2ApplyEffect_Click" Height="26" FontSize="10" Margin="1" />
+                                            <!-- RT row -->
+                                            <TextBlock Grid.Row="2" Grid.Column="0" Text="RT" FontSize="11" FontWeight="Bold" VerticalAlignment="Center" Margin="2,0,4,0" />
+                                            <Button Grid.Row="2" Grid.Column="1" Content="Off"  Tag="RT:Off"         Click="V2ApplyEffect_Click" Height="26" FontSize="10" Margin="1" />
+                                            <Button Grid.Row="2" Grid.Column="2" Content="赛车" Tag="RT:Racing"      Click="V2ApplyEffect_Click" Height="26" FontSize="10" Margin="1" />
+                                            <Button Grid.Row="2" Grid.Column="3" Content="机枪" Tag="RT:Machinegun"  Click="V2ApplyEffect_Click" Height="26" FontSize="10" Margin="1" />
+                                            <Button Grid.Row="2" Grid.Column="4" Content="狙击" Tag="RT:Sniper"      Click="V2ApplyEffect_Click" Height="26" FontSize="10" Margin="1" />
+                                            <Button Grid.Row="2" Grid.Column="5" Content="扳锁" Tag="RT:TriggerLock" Click="V2ApplyEffect_Click" Height="26" FontSize="10" Margin="1" />
+                                            <Button Grid.Row="2" Grid.Column="6" Content="震动" Tag="RT:Vibration"   Click="V2ApplyEffect_Click" Height="26" FontSize="10" Margin="1" />
+                                        </Grid>
+                                        <Button Content="🧹 V2 清空双扳机 (LT Off + RT Off)" Click="V2ClearBoth_Click"
+                                                Height="26" FontSize="11" Margin="1,4,1,2" Foreground="White" Background="#455A64" />
                                         <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                                             <Button Content="🔍 枚举 HID 接口" Click="EnumInterfaces_Click" Height="26" FontSize="11" Width="130" Margin="0,0,4,0" />
                                             <Button Content="⛔ 停止服务+测试" Click="StopServiceAndTest_Click" Height="26" FontSize="11" Foreground="White" Background="#D32F2F" />
                                         </StackPanel>
                                         <Button Content="🛑 仅关闭 SpaceStation (避免接口冲突)" Click="StopSpaceStationOnly_Click" Height="26" FontSize="11" Margin="0,2,0,0" Foreground="White" Background="#7B1FA2" />
+                                        <Button Content="🌐 广播 Slot 2 到所有 HID 接口 (定位可写接口)" Click="BroadcastAllInterfaces_Click" Height="26" FontSize="11" Margin="0,2,0,0" Foreground="White" Background="#00695C" />
+                                        <Button Content="💢 广播强振动到所有 HID 接口 (最强可感知反馈)" Click="BroadcastStrongRumble_Click" Height="26" FontSize="11" Margin="0,2,0,0" Foreground="White" Background="#C62828" />
+                                        <Button Content="🚀 完整激活序列 Slot 2 (含 0x51 ACTIVATE+FINALIZE) ★★★" Click="FullActivationSlot2_Click" Height="30" FontSize="12" FontWeight="Bold" Margin="0,4,0,0" Foreground="White" Background="#2E7D32" />
+                                        <Button Content="🚀 完整激活 轮询 Slot 1→4" Click="FullActivationAllSlots_Click" Height="26" FontSize="11" Margin="0,2,0,0" Foreground="White" Background="#388E3C" />
                                         <TextBlock Text="抓包 Replay (字节精确)" FontSize="12" FontWeight="SemiBold" Margin="0,8,0,2" />
                                         <Grid>
                                             <Grid.ColumnDefinitions>

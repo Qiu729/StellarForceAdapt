@@ -209,6 +209,320 @@ public class FlyDigiDevice : IDisposable
     }
 
     /// <summary>
+    /// Send the complete 6-packet activation sequence captured from SpaceStation:
+    /// 0x11 → A4 → A5 → A6 → 0x51(activate) → 0x51(finalize).
+    /// The two 0x51 packets are the critical missing piece: without them the device
+    /// only STORES the config but never APPLIES it to the physical trigger hardware,
+    /// which explains why all previous replays got ACKs but produced zero haptic effect.
+    /// </summary>
+    public (bool ok, string details) ReplayFullActivation(
+        int slot, byte? map8 = null, byte? map9 = null)
+    {
+        var seq = ForceAdaptProtocol.VendorProtocol.CapturedReplay
+            .BuildFullActivationSequence(slot, map8, map9);
+        string[] names = ["11 STATUS", "A4 BEGIN", "A5 SET", "A6 END", "51 ACTIVATE", "51 FINALIZE"];
+        var sb = new System.Text.StringBuilder();
+        bool allOk = true;
+        for (int i = 0; i < seq.Length; i++)
+        {
+            bool ok = SendVendorCommand(seq[i]);
+            sb.Append(ok ? "✓" : "✗").Append(names[i]).Append(' ');
+            if (!ok) allOk = false;
+            Thread.Sleep(12);
+        }
+        return (allOk, sb.ToString().TrimEnd());
+    }
+
+    /// <summary>
+    /// V2 ForceAdapt entry point: apply a single (side, mode) effect to the
+    /// physical trigger using byte-exact templates captured from SpaceStation.
+    /// Handles the 6-packet non-vibration flush and the 7-packet 0x52 haptic
+    /// path transparently. Returns (ok, diag) for UI/log surfaces.
+    /// </summary>
+    public (bool ok, string details) ApplyTriggerEffect(
+        ForceAdaptProtocol.TriggerSide side,
+        ForceAdaptProtocol.ForceAdaptMode mode)
+    {
+        var seq = ForceAdaptProtocol.VendorProtocol.CapturedReplay
+            .BuildApplySequenceV2(side, mode);
+        var names = ForceAdaptProtocol.VendorProtocol.CapturedReplay.V2PacketNames;
+
+        var sb = new System.Text.StringBuilder();
+        sb.Append('[').Append(side).Append(' ').Append(mode).Append("] ");
+        bool allOk = true;
+        for (int i = 0; i < seq.Length; i++)
+        {
+            bool ok = SendVendorCommand(seq[i]);
+            sb.Append(ok ? "✓" : "✗").Append(names[i]).Append(' ');
+            if (!ok) allOk = false;
+            Thread.Sleep(12);
+        }
+        return (allOk, sb.ToString().TrimEnd());
+    }
+
+    /// <summary>
+    /// V2 convenience overload: apply the same (mode) effect to both triggers
+    /// back-to-back. Used when a profile requests <c>TriggerTarget.Both</c>.
+    /// </summary>
+    public (bool ok, string details) ApplyTriggerEffectBoth(ForceAdaptProtocol.ForceAdaptMode mode)
+    {
+        var (lOk, lDetails) = ApplyTriggerEffect(ForceAdaptProtocol.TriggerSide.LT, mode);
+        Thread.Sleep(20);
+        var (rOk, rDetails) = ApplyTriggerEffect(ForceAdaptProtocol.TriggerSide.RT, mode);
+        return (lOk && rOk, lDetails + " | " + rDetails);
+    }
+
+    /// <summary>
+    /// Broadcast a Slot-2 A4/A5/A6 triplet to EVERY FlyDigi HID interface individually.
+    /// Tries multiple send mechanisms per interface (HidSharp Write, Feature, HidD_SetOutputReport).
+    /// Pauses 'interfaceDelayMs' between interfaces so the user can feel which one actually drives the triggers.
+    /// Returns a multi-line report describing each attempt.
+    /// </summary>
+    public static string BroadcastSlot2ToAllInterfaces(int interfaceDelayMs, Action<string> perLineLog)
+    {
+        var sb = new System.Text.StringBuilder();
+        var devices = DeviceList.Local
+            .GetHidDevices()
+            .Where(d => d.VendorID == ForceAdaptProtocol.VendorId)
+            .OrderBy(d => d.ProductID)
+            .ThenBy(d => d.GetMaxOutputReportLength())
+            .ToArray();
+
+        var seq = ForceAdaptProtocol.VendorProtocol.CapturedReplay.BuildSequence(2);
+
+        void Log(string line) { sb.AppendLine(line); perLineLog?.Invoke(line); }
+
+        Log($"🌐 枚举到 {devices.Length} 个 FlyDigi HID 接口，逐一广播 Slot 2 (间隔 {interfaceDelayMs}ms)");
+
+        int idx = 0;
+        foreach (var dev in devices)
+        {
+            idx++;
+            int outLen = SafeInt(() => dev.GetMaxOutputReportLength());
+            int inLen = SafeInt(() => dev.GetMaxInputReportLength());
+            int featLen = SafeInt(() => dev.GetMaxFeatureReportLength());
+            string shortPath = dev.DevicePath.Length > 48
+                ? "…" + dev.DevicePath[^48..]
+                : dev.DevicePath;
+            Log($"── [{idx}/{devices.Length}] PID=0x{dev.ProductID:X4} out={outLen} in={inLen} feat={featLen}");
+            Log($"   {shortPath}");
+
+            // Method 1: HidSharp open + Write (Output report)
+            string m1 = TryHidSharpWriteAll(dev, seq, outLen);
+            Log($"   [1] HidSharp Write : {m1}");
+
+            Thread.Sleep(80);
+
+            // Method 2: CreateFile + HidD_SetOutputReport
+            string m2 = TryHidDSetOutputAll(dev, seq, outLen);
+            Log($"   [2] HidD_SetOutput : {m2}");
+
+            Thread.Sleep(80);
+
+            // Method 3: HidSharp SetFeature
+            string m3 = TrySetFeatureAll(dev, seq, featLen);
+            Log($"   [3] SetFeature     : {m3}");
+
+            Log($"   ⏱ 请在 {interfaceDelayMs}ms 内拉 LT 和 RT 感受是否变化");
+            Thread.Sleep(interfaceDelayMs);
+        }
+
+        Log("✅ 广播完成。请回忆哪一秒 LT 或 RT 有变化，将那次对应的 PID+方法告诉我。");
+        return sb.ToString();
+    }
+
+    private static int SafeInt(Func<int> f) { try { return f(); } catch { return -1; } }
+
+    private static string TryHidSharpWriteAll(HidDevice dev, byte[][] seq, int outLen)
+    {
+        if (outLen <= 0) return "跳过(output<=0)";
+        try
+        {
+            using var s = dev.Open();
+            foreach (var pkt in seq)
+            {
+                var buf = new byte[outLen];
+                Array.Copy(pkt, 0, buf, 0, Math.Min(pkt.Length, outLen));
+                s.Write(buf, 0, outLen);
+                Thread.Sleep(12);
+            }
+            return "OK";
+        }
+        catch (Exception ex) { return $"FAIL {ex.GetType().Name}: {ex.Message}"; }
+    }
+
+    private static string TryHidDSetOutputAll(HidDevice dev, byte[][] seq, int outLen)
+    {
+        if (outLen <= 0) return "跳过(output<=0)";
+        nint h = CreateFile(dev.DevicePath, 0xC0000000, 3, nint.Zero, 3, 0, nint.Zero);
+        if (h == new nint(-1)) return $"CreateFile 失败 err={Marshal.GetLastWin32Error()}";
+        try
+        {
+            foreach (var pkt in seq)
+            {
+                var buf = new byte[outLen];
+                Array.Copy(pkt, 0, buf, 0, Math.Min(pkt.Length, outLen));
+                if (!HidD_SetOutputReport(h, buf, outLen))
+                    return $"FAIL err={Marshal.GetLastWin32Error()}";
+                Thread.Sleep(12);
+            }
+            return "OK";
+        }
+        finally { CloseHandle(h); }
+    }
+
+    private static string TrySetFeatureAll(HidDevice dev, byte[][] seq, int featLen)
+    {
+        if (featLen <= 0) return "跳过(feat<=0)";
+        try
+        {
+            using var s = dev.Open();
+            foreach (var pkt in seq)
+            {
+                var buf = new byte[featLen];
+                Array.Copy(pkt, 0, buf, 0, Math.Min(pkt.Length, featLen));
+                s.SetFeature(buf);
+                Thread.Sleep(12);
+            }
+            return "OK";
+        }
+        catch (Exception ex) { return $"FAIL {ex.GetType().Name}: {ex.Message}"; }
+    }
+
+    /// <summary>
+    /// Check whether SpaceStationService process is currently running.
+    /// </summary>
+    public static bool IsSpaceStationRunning()
+    {
+        try
+        {
+            return Process.GetProcessesByName("SpaceStationService").Length > 0
+                || Process.GetProcessesByName("Flydigi Space Station").Length > 0
+                || Process.GetProcessesByName("FlydigiSpaceStation").Length > 0;
+        }
+        catch { return false; }
+    }
+
+    /// <summary>
+    /// Broadcast MAXIMUM strength rumble (Report 0x05 sub 0x0f, all motors 255)
+    /// to every FlyDigi HID interface, using 3 send mechanisms per interface.
+    /// If the controller vibrates at any point, that interface+method is writable.
+    /// This isolates "interface reachable" from "ForceAdapt protocol correct".
+    /// </summary>
+    /// <param name="perMethodMs">Silent wait after EACH individual sub-method so the user can identify which one triggered the vibration.</param>
+    /// <param name="perInterfaceMs">Additional pause between whole interfaces.</param>
+    public static string BroadcastStrongRumbleToAllInterfaces(int perMethodMs, int perInterfaceMs, Action<string> perLineLog)
+    {
+        var sb = new System.Text.StringBuilder();
+        var devices = DeviceList.Local
+            .GetHidDevices()
+            .Where(d => d.VendorID == ForceAdaptProtocol.VendorId)
+            .OrderBy(d => d.ProductID)
+            .ThenBy(d => d.GetMaxOutputReportLength())
+            .ToArray();
+
+        // Max rumble: Report 0x05 sub 0x0f, left/right main + left/right trigger all = 255
+        var rumble = ForceAdaptProtocol.BuildRumbleCommand(255, 255, 255, 255);
+        // Vendor cmd 0x12 HAPTIC (SDL naming), strong values
+        var vendorHaptic = BuildVendorHaptic();
+        void Log(string line) { sb.AppendLine(line); perLineLog?.Invoke(line); }
+
+        Log($"💢 枚举到 {devices.Length} 个 FlyDigi HID 接口, 依次广播强振动+震动命令");
+        Log($"   每个子方法之间等待 {perMethodMs}ms, 接口之间额外 {perInterfaceMs}ms");
+        Log($"   ⚠ 请盯着下一行日志 + 手感, 振动瞬间对应哪一行就是那个方法生效");
+
+        int idx = 0;
+        foreach (var dev in devices)
+        {
+            idx++;
+            int outLen = SafeInt(() => dev.GetMaxOutputReportLength());
+            int featLen = SafeInt(() => dev.GetMaxFeatureReportLength());
+            string shortPath = dev.DevicePath.Length > 48
+                ? "…" + dev.DevicePath[^48..]
+                : dev.DevicePath;
+            Log($"── [{idx}/{devices.Length}] PID=0x{dev.ProductID:X4} out={outLen} feat={featLen}");
+            Log($"   {shortPath}");
+
+            SendAndWait("1a HidSharp Write  0x05 Rumble", () => TrySingleHidSharpWrite(dev, rumble, outLen), perMethodMs, Log);
+            SendAndWait("1b HidSharp Write  0x12 Haptic", () => TrySingleHidSharpWrite(dev, vendorHaptic, outLen), perMethodMs, Log);
+            SendAndWait("2a HidD_SetOutput  0x05 Rumble", () => TrySingleHidDSetOutput(dev, rumble, outLen), perMethodMs, Log);
+            SendAndWait("2b HidD_SetOutput  0x12 Haptic", () => TrySingleHidDSetOutput(dev, vendorHaptic, outLen), perMethodMs, Log);
+            SendAndWait("3a SetFeature      0x05 Rumble", () => TrySingleSetFeature(dev, rumble, featLen), perMethodMs, Log);
+            SendAndWait("3b SetFeature      0x12 Haptic", () => TrySingleSetFeature(dev, vendorHaptic, featLen), perMethodMs, Log);
+
+            Log($"   ── 接口 {idx} 完成, 额外等 {perInterfaceMs}ms 再换下一个 ──");
+            Thread.Sleep(perInterfaceMs);
+        }
+
+        Log("✅ 广播完成. 振动瞬间对应的那一行 [Xx] 就是答案");
+        return sb.ToString();
+    }
+
+    /// <summary>Send one packet via a specific method, then idle the requested duration so the user can feel whether THIS method caused vibration.</summary>
+    private static void SendAndWait(string label, Func<string> sendFunc, int waitMs, Action<string> log)
+    {
+        log($"   ▶ 发送 [{label}] ...");
+        string result = sendFunc();
+        log($"     [{label}] : {result}   —— 接下来 {waitMs}ms 静默, 感受振动 ——");
+        Thread.Sleep(waitMs);
+    }
+
+    /// <summary>Build a 32B vendor haptic command (SDL FLYDIGI_V2_HAPTIC_COMMAND 0x12) with max power.</summary>
+    private static byte[] BuildVendorHaptic()
+    {
+        var buf = new byte[32];
+        buf[0] = ForceAdaptProtocol.VendorProtocol.ReportId; // 0x03
+        buf[1] = 0x5A; buf[2] = 0xA5;
+        buf[3] = ForceAdaptProtocol.VendorProtocol.CmdHaptic; // 0x12
+        buf[4] = 0x04; // payload 4B
+        buf[5] = 0xFF; buf[6] = 0xFF; // left/right main rumble
+        buf[7] = 0xFF; buf[8] = 0xFF; // left/right trigger rumble
+        return buf;
+    }
+
+    private static string TrySingleHidSharpWrite(HidDevice dev, byte[] pkt, int outLen)
+    {
+        if (outLen <= 0) return "跳过(output<=0)";
+        try
+        {
+            using var s = dev.Open();
+            var buf = new byte[outLen];
+            Array.Copy(pkt, 0, buf, 0, Math.Min(pkt.Length, outLen));
+            s.Write(buf, 0, outLen);
+            return "OK";
+        }
+        catch (Exception ex) { return $"FAIL {ex.GetType().Name}: {ex.Message}"; }
+    }
+
+    private static string TrySingleHidDSetOutput(HidDevice dev, byte[] pkt, int outLen)
+    {
+        if (outLen <= 0) return "跳过(output<=0)";
+        nint h = CreateFile(dev.DevicePath, 0xC0000000, 3, nint.Zero, 3, 0, nint.Zero);
+        if (h == new nint(-1)) return $"CreateFile err={Marshal.GetLastWin32Error()}";
+        try
+        {
+            var buf = new byte[outLen];
+            Array.Copy(pkt, 0, buf, 0, Math.Min(pkt.Length, outLen));
+            return HidD_SetOutputReport(h, buf, outLen) ? "OK" : $"FAIL err={Marshal.GetLastWin32Error()}";
+        }
+        finally { CloseHandle(h); }
+    }
+
+    private static string TrySingleSetFeature(HidDevice dev, byte[] pkt, int featLen)
+    {
+        if (featLen <= 0) return "跳过(feat<=0)";
+        try
+        {
+            using var s = dev.Open();
+            var buf = new byte[featLen];
+            Array.Copy(pkt, 0, buf, 0, Math.Min(pkt.Length, featLen));
+            s.SetFeature(buf);
+            return "OK";
+        }
+        catch (Exception ex) { return $"FAIL {ex.GetType().Name}: {ex.Message}"; }
+    }
+
+    /// <summary>
     /// Send a ForceAdapt command using the mi_02 32-byte format.
     /// Returns true if successful.
     /// </summary>
