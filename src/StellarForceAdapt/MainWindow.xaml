@@ -1,0 +1,378 @@
+<Window x:Class="StellarForceAdapt.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="StellarForceAdapt — 飞智八爪鱼5 × 剑星 自适应扳机"
+        Height="700" Width="900"
+        MinHeight="500" MinWidth="700"
+        WindowStartupLocation="CenterScreen">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- ===== Top Bar ===== -->
+        <Border Grid.Row="0" Background="{StaticResource CardBg}" CornerRadius="8" Padding="16" Margin="0,0,0,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="⚡" FontSize="24" Margin="0,0,8,0" />
+                    <StackPanel>
+                        <TextBlock Text="StellarForceAdapt" FontSize="20" FontWeight="Bold" />
+                        <TextBlock Text="{Binding VersionText, FallbackValue=v1.0}" FontSize="12"
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- Status Indicators -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <!-- Controller Status -->
+                    <Border x:Name="ControllerStatus" Background="{StaticResource BgMedium}"
+                            CornerRadius="16" Padding="12,4" Margin="4">
+                        <TextBlock x:Name="ControllerText" Text="🎮 手柄: 未连接" FontSize="13" />
+                    </Border>
+                    <!-- Game Status -->
+                    <Border x:Name="GameStatus" Background="{StaticResource BgMedium}"
+                            CornerRadius="16" Padding="12,4" Margin="4">
+                        <TextBlock x:Name="GameText" Text="🎯 游戏: 未检测" FontSize="13" />
+                    </Border>
+                    <!-- Engine Status -->
+                    <Border x:Name="EngineStatus" Background="{StaticResource BgMedium}"
+                            CornerRadius="16" Padding="12,4" Margin="4">
+                        <TextBlock x:Name="EngineText" Text="⚙️ 引擎: 停止" FontSize="13" />
+                    </Border>
+                </StackPanel>
+
+                <!-- Start/Stop Button -->
+                <Button Grid.Column="2" x:Name="ToggleButton"
+                        Content="▶ 启动引擎"
+                        Click="ToggleEngine_Click"
+                        Width="120" Height="36"
+                        FontWeight="Bold" />
+            </Grid>
+        </Border>
+
+        <!-- ===== Main Content ===== -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <!-- Left Panel -->
+            <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <!-- Profile Selection -->
+                    <Border Background="{StaticResource CardBg}" CornerRadius="8" Padding="16" Margin="0,0,0,8">
+                        <StackPanel>
+                            <TextBlock Text="📋 配置文件" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <ComboBox Grid.Column="0" x:Name="ProfileCombo"
+                                          DisplayMemberPath="Name"
+                                          SelectionChanged="Profile_Changed"
+                                          Height="32" />
+                                <Button Grid.Column="1" Content="🔄 刷新" Margin="8,0,0,0"
+                                        Click="RefreshProfiles_Click" Width="70" />
+                            </Grid>
+                            <TextBlock x:Name="ProfileDesc" TextWrapping="Wrap" Margin="0,4,0,0"
+                                       Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Game State Monitor -->
+                    <Border Background="{StaticResource CardBg}" CornerRadius="8" Padding="16" Margin="0,0,0,8">
+                        <StackPanel>
+                            <TextBlock Text="📊 游戏状态" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="动作状态:" Width="80" />
+                                <TextBlock Grid.Row="0" Grid.Column="1" x:Name="ActionText" Text="-" FontWeight="Bold" />
+
+                                <TextBlock Grid.Row="0" Grid.Column="2" Text="战斗状态:" Width="80" Margin="16,0,0,0" />
+                                <TextBlock Grid.Row="0" Grid.Column="3" x:Name="CombatText" Text="-" FontWeight="Bold" />
+
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="左扳机:" Margin="0,4,0,0" />
+                                <ProgressBar Grid.Row="1" Grid.Column="1" x:Name="LeftTriggerBar"
+                                             Height="16" Margin="0,4,0,0" Maximum="255" />
+
+                                <TextBlock Grid.Row="1" Grid.Column="2" Text="右扳机:" Margin="16,4,0,0" />
+                                <ProgressBar Grid.Row="1" Grid.Column="3" x:Name="RightTriggerBar"
+                                             Height="16" Margin="0,4,0,0" Maximum="255" />
+
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="连击数:" Margin="0,4,0,0" />
+                                <TextBlock Grid.Row="2" Grid.Column="1" x:Name="ComboText" Text="0" Margin="0,4,0,0" />
+
+                                <TextBlock Grid.Row="2" Grid.Column="2" Text="检测来源:" Margin="16,4,0,0" />
+                                <TextBlock Grid.Row="2" Grid.Column="3" x:Name="SourceText" Text="-" Margin="0,4,0,0"
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
+
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="延迟:" Margin="0,4,0,0" />
+                                <TextBlock Grid.Row="3" Grid.Column="1" x:Name="LatencyText" Text="-" Margin="0,4,0,0"
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Trigger Preview -->
+                    <Border Background="{StaticResource CardBg}" CornerRadius="8" Padding="16" Margin="0,0,0,8">
+                        <StackPanel>
+                            <TextBlock Text="🎮 扳机状态" FontSize="16" FontWeight="SemiBold" Margin="0,0,0,8" />
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <!-- Left Trigger -->
+                                <Border Grid.Column="0" Background="{StaticResource BgMedium}"
+                                        CornerRadius="6" Padding="12">
+                                    <StackPanel>
+                                        <TextBlock Text="L2 (左扳机)" FontSize="13"
+                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                        <TextBlock x:Name="LeftTriggerValue" Text="0" FontSize="28"
+                                                   FontWeight="Bold" HorizontalAlignment="Center" Margin="0,4" />
+                                        <TextBlock x:Name="LeftEffectText" Text="无效果" FontSize="12"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   HorizontalAlignment="Center" />
+                                    </StackPanel>
+                                </Border>
+
+                                <TextBlock Grid.Column="1" Text="VS" VerticalAlignment="Center"
+                                           Margin="16" Foreground="{StaticResource TextSecondaryBrush}" FontSize="18" />
+
+                                <!-- Right Trigger -->
+                                <Border Grid.Column="2" Background="{StaticResource BgMedium}"
+                                        CornerRadius="6" Padding="12">
+                                    <StackPanel>
+                                        <TextBlock Text="R2 (右扳机)" FontSize="13"
+                                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                                        <TextBlock x:Name="RightTriggerValue" Text="0" FontSize="28"
+                                                   FontWeight="Bold" HorizontalAlignment="Center" Margin="0,4" />
+                                        <TextBlock x:Name="RightEffectText" Text="无效果" FontSize="12"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   HorizontalAlignment="Center" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Right Panel - Tabs -->
+            <Border Grid.Column="1" Background="{StaticResource CardBg}" CornerRadius="8" Padding="0"
+                    Width="300" Margin="12,0,0,0">
+                <TabControl Background="Transparent" BorderThickness="0">
+                    <TabItem Header="📝 触发日志" Background="Transparent" Padding="12,8">
+                        <StackPanel>
+                            <Border Background="{StaticResource BgMedium}" CornerRadius="4" Padding="4"
+                                    Height="340">
+                                <ListBox x:Name="LogList" Background="Transparent" BorderThickness="0"
+                                         ScrollViewer.VerticalScrollBarVisibility="Auto">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding}" TextWrapping="Wrap" FontSize="12"
+                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                       Margin="2" />
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </Border>
+                            <Button Content="🗑 清空日志" Margin="0,4,0,0" Click="ClearLog_Click" Height="28" FontSize="12" />
+                        </StackPanel>
+                    </TabItem>
+                    <TabItem x:Name="DebugTab" Header="🎮 控制器调试" Background="Transparent" Padding="12,8">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <!-- Raw HID Data -->
+                                <Border Background="{StaticResource BgMedium}" CornerRadius="6" Padding="8" Margin="0,0,0,8">
+                                    <StackPanel>
+                                        <TextBlock Text="原始 HID 数据 (15字节)" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,4" />
+                                        <TextBlock x:Name="RawHidText" Text="等待数据..." FontSize="12"
+                                                   FontFamily="Consolas" TextWrapping="Wrap" />
+                                        <TextBlock x:Name="RawChangesText" Text="" FontSize="11"
+                                                   FontFamily="Consolas" Foreground="#4CAF50" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Button States -->
+                                <Border Background="{StaticResource BgMedium}" CornerRadius="6" Padding="8" Margin="0,0,0,8">
+                                    <StackPanel>
+                                        <TextBlock Text="按键状态" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,4" />
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+                                            <!-- Row 0: Face buttons -->
+                                            <Border Grid.Row="0" Grid.Column="0" x:Name="Btn_A" Background="#333" CornerRadius="4" Padding="6,3" Margin="2">
+                                                <TextBlock Text="A" FontSize="14" FontWeight="Bold" HorizontalAlignment="Center" />
+                                            </Border>
+                                            <Border Grid.Row="0" Grid.Column="1" x:Name="Btn_B" Background="#333" CornerRadius="4" Padding="6,3" Margin="2">
+                                                <TextBlock Text="B" FontSize="14" FontWeight="Bold" HorizontalAlignment="Center" />
+                                            </Border>
+                                            <Border Grid.Row="0" Grid.Column="2" x:Name="Btn_X" Background="#333" CornerRadius="4" Padding="6,3" Margin="2">
+                                                <TextBlock Text="X" FontSize="14" FontWeight="Bold" HorizontalAlignment="Center" />
+                                            </Border>
+                                            <Border Grid.Row="0" Grid.Column="3" x:Name="Btn_Y" Background="#333" CornerRadius="4" Padding="6,3" Margin="2">
+                                                <TextBlock Text="Y" FontSize="14" FontWeight="Bold" HorizontalAlignment="Center" />
+                                            </Border>
+                                            <!-- Row 1: Shoulder buttons -->
+                                            <Border Grid.Row="1" Grid.Column="0" x:Name="Btn_LB" Background="#333" CornerRadius="4" Padding="6,3" Margin="2">
+                                                <TextBlock Text="LB" FontSize="12" FontWeight="Bold" HorizontalAlignment="Center" />
+                                            </Border>
+                                            <Border Grid.Row="1" Grid.Column="1" x:Name="Btn_RB" Background="#333" CornerRadius="4" Padding="6,3" Margin="2">
+                                                <TextBlock Text="RB" FontSize="12" FontWeight="Bold" HorizontalAlignment="Center" />
+                                            </Border>
+                                            <!-- Row 2: Triggers -->
+                                            <Border Grid.Row="4" Grid.Column="0" x:Name="Btn_LT" Background="#333" CornerRadius="4" Padding="6,3" Margin="2">
+                                                <TextBlock Text="LT" FontSize="12" FontWeight="Bold" HorizontalAlignment="Center" />
+                                            </Border>
+                                            <Border Grid.Row="4" Grid.Column="1" x:Name="Btn_RT" Background="#333" CornerRadius="4" Padding="6,3" Margin="2">
+                                                <TextBlock Text="RT" FontSize="12" FontWeight="Bold" HorizontalAlignment="Center" />
+                                            </Border>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+
+
+                                <!-- Button Binding -->
+                                <Border Background="{StaticResource BgMedium}" CornerRadius="6" Padding="8" Margin="0,0,0,8">
+                                    <StackPanel>
+                                        <TextBlock Text="按键绑定" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,4" />
+                                        <TextBlock x:Name="BindStatusText" Text="选择一个按键开始绑定" FontSize="11"
+                                                   Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,4" />
+                                        <Grid x:Name="BindButtonsGrid">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+                                            <Button Grid.Row="0" Grid.Column="0" x:Name="Bind_A" Content="A" Click="BindButton_Click" FontSize="12" Height="26" Margin="1" />
+                                            <Button Grid.Row="0" Grid.Column="1" x:Name="Bind_B" Content="B" Click="BindButton_Click" FontSize="12" Height="26" Margin="1" />
+                                            <Button Grid.Row="0" Grid.Column="2" x:Name="Bind_X" Content="X" Click="BindButton_Click" FontSize="12" Height="26" Margin="1" />
+                                            <Button Grid.Row="0" Grid.Column="3" x:Name="Bind_Y" Content="Y" Click="BindButton_Click" FontSize="12" Height="26" Margin="1" />
+                                            <Button Grid.Row="1" Grid.Column="0" x:Name="Bind_LB" Content="LB" Click="BindButton_Click" FontSize="12" Height="26" Margin="1" />
+                                            <Button Grid.Row="1" Grid.Column="1" x:Name="Bind_RB" Content="RB" Click="BindButton_Click" FontSize="12" Height="26" Margin="1" />
+                                            <Button Grid.Row="2" Grid.Column="0" x:Name="Bind_LT" Content="LT" Click="BindButton_Click" FontSize="12" Height="26" Margin="1" />
+                                            <Button Grid.Row="2" Grid.Column="1" x:Name="Bind_RT" Content="RT" Click="BindButton_Click" FontSize="12" Height="26" Margin="1" />
+                                        </Grid>
+                                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                            <Button x:Name="SaveMappingBtn" Content="💾 保存映射" Click="SaveMapping_Click" Height="28" FontSize="12" Width="120" Margin="0,0,4,0" />
+                                            <Button Content="🔄 重新绑定" Click="ResetMapping_Click" Height="28" FontSize="12" Width="100" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Manual Test -->
+                                <Border Background="{StaticResource BgMedium}" CornerRadius="6" Padding="8" Margin="0,0,0,8">
+                                    <StackPanel>
+                                        <TextBlock Text="手动测试" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,4" />
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                                <RowDefinition Height="Auto" />
+                                            </Grid.RowDefinitions>
+                                            <Button Grid.Row="0" Grid.Column="0" Content="测试 RT 阻力" Click="TestForceAdaptRT_Click" Height="28" FontSize="11" Margin="1" />
+                                            <Button Grid.Row="0" Grid.Column="1" Content="测试 RT 振动" Click="TestForceAdaptVibrate_Click" Height="28" FontSize="11" Margin="1" />
+                                            <Button Grid.Row="1" Grid.Column="0" Content="测试 LT 阻力" Click="TestForceAdaptLT_Click" Height="28" FontSize="11" Margin="1" />
+                                            <Button Grid.Row="1" Grid.Column="1" Content="测试扳机马达" Click="TestRumble_Click" Height="28" FontSize="11" Margin="1" />
+                                            <Button Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" Content="停止全部" Click="TestStopAll_Click" Height="28" FontSize="11" Margin="1" Background="#C62828" Foreground="White" />
+                                        </Grid>
+                                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                            <Button Content="🔍 枚举 HID 接口" Click="EnumInterfaces_Click" Height="26" FontSize="11" Width="130" Margin="0,0,4,0" />
+                                            <Button Content="⛔ 停止服务+测试" Click="StopServiceAndTest_Click" Height="26" FontSize="11" Foreground="White" Background="#D32F2F" />
+                                        </StackPanel>
+                                        <Button Content="🛑 仅关闭 SpaceStation (避免接口冲突)" Click="StopSpaceStationOnly_Click" Height="26" FontSize="11" Margin="0,2,0,0" Foreground="White" Background="#7B1FA2" />
+                                        <TextBlock Text="抓包 Replay (字节精确)" FontSize="12" FontWeight="SemiBold" Margin="0,8,0,2" />
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Button Grid.Column="0" Content="Slot 1" Tag="1" Click="ReplayCaptured_Click" Height="26" FontSize="11" Margin="1" />
+                                            <Button Grid.Column="1" Content="Slot 2" Tag="2" Click="ReplayCaptured_Click" Height="26" FontSize="11" Margin="1" />
+                                            <Button Grid.Column="2" Content="Slot 3" Tag="3" Click="ReplayCaptured_Click" Height="26" FontSize="11" Margin="1" />
+                                            <Button Grid.Column="3" Content="Slot 4" Tag="4" Click="ReplayCaptured_Click" Height="26" FontSize="11" Margin="1" />
+                                        </Grid>
+                                        <Button Content="🔁 Replay 全部 Slot (轮询)" Click="ReplayAllSlots_Click" Height="26" FontSize="11" Margin="1,2,1,1" />
+                                        <TextBlock Text="LT/RT 映射探测 (含 0x11 前置)" FontSize="12" FontWeight="SemiBold" Margin="0,8,0,2" />
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <Button Grid.Column="0" Content="[8,9]=0A,0A" Tag="0A0A" Click="ProbeTriggerMap_Click" Height="26" FontSize="11" Margin="1" />
+                                            <Button Grid.Column="1" Content="仅 [8]=0A" Tag="0A00" Click="ProbeTriggerMap_Click" Height="26" FontSize="11" Margin="1" />
+                                            <Button Grid.Column="2" Content="仅 [9]=0A" Tag="000A" Click="ProbeTriggerMap_Click" Height="26" FontSize="11" Margin="1" />
+                                        </Grid>
+                                        <Button Content="🔁 轮询 LT/RT 映射探测" Click="ProbeAllTriggerMaps_Click" Height="26" FontSize="11" Margin="1,2,1,1" />
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </TabItem>
+                </TabControl>
+            </Border>
+        </Grid>
+
+        <!-- ===== Status Bar ===== -->
+        <Border Grid.Row="2" Background="{StaticResource CardBg}" CornerRadius="8"
+                Padding="12,6" Margin="0,8,0,0">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" x:Name="StatusText" Text="就绪" FontSize="12" />
+                <TextBlock Grid.Column="2" x:Name="FpsText" Text="" FontSize="12"
+                           Foreground="{StaticResource TextSecondaryBrush}" />
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
