@@ -10,7 +10,6 @@ namespace StellarForceAdapt.Mapping;
 public class MappingEngine : IDisposable
 {
     private readonly FlyDigiDevice _device;
-    private readonly HIDGamepadReader _gamepad;
     private readonly StellarBladeMonitor _gameMonitor;
     private readonly CancellationTokenSource _cts = new();
 
@@ -25,7 +24,6 @@ public class MappingEngine : IDisposable
     private DateTime _forceAdaptExpiry = DateTime.MinValue;
 
     private readonly XInputWatcher _xinput = new();
-    private bool _xinputActive;
 
     private struct ForceAdaptEffectState
     {
@@ -36,21 +34,18 @@ public class MappingEngine : IDisposable
 
     public TriggerProfile? CurrentProfile { get; private set; }
     public bool IsRunning => _running;
+    public XInputState CurrentInput => _xinput.CurrentState;
     public GameState CurrentGameState => _gameMonitor.CurrentState;
 
     public event EventHandler<string>? StatusChanged;
     public event EventHandler<GameState>? GameStateUpdate;
     public event EventHandler<string>? EffectTriggered;
 
-    public ControllerMapping? ButtonMapping { get; set; }
-
-    public MappingEngine(FlyDigiDevice device, HIDGamepadReader gamepad, StellarBladeMonitor gameMonitor)
+    public MappingEngine(FlyDigiDevice device, StellarBladeMonitor gameMonitor)
     {
         _device = device;
-        _gamepad = gamepad;
         _gameMonitor = gameMonitor;
 
-        _gamepad.StateChanged += OnGamepadStateChanged;
         _gameMonitor.GameStateChanged += OnGameStateChanged;
         _gameMonitor.GameProcessChanged += OnGameProcessChanged;
         _xinput.StateChanged += OnXInputStateChanged;
@@ -71,23 +66,7 @@ public class MappingEngine : IDisposable
         if (_running) return;
         _running = true;
 
-        // Use HID input when available (covers both CD2 wireless and wired 0x2501).
-        // FlyDigiDevice now serializes all stream access via SemaphoreSlim, so
-        // concurrent HIDGamepadReader reads (on a separate input stream) and
-        // FlyDigiDevice writes (on the output stream) no longer conflict.
-        bool hidOk = _gamepad.IsConnected || _gamepad.Connect();
-        if (hidOk)
-        {
-            _gamepad.Start();
-            _xinputActive = false;
-            StatusChanged?.Invoke(this, "HID 输入已启用");
-        }
-        else
-        {
-            _xinput.Start(4);
-            _xinputActive = true;
-            StatusChanged?.Invoke(this, "HID 未连接，降级到 XInput 输入");
-        }
+        _xinput.Start(4);
         _gameMonitor.Start();
 
         _engineThread = new Thread(EngineLoop)
@@ -97,6 +76,7 @@ public class MappingEngine : IDisposable
         };
         _engineThread.Start();
 
+        StatusChanged?.Invoke(this, "XInput 输入已启用");
         StatusChanged?.Invoke(this, "Engine started");
         Debug.WriteLine("[Engine] Started");
     }
@@ -104,11 +84,9 @@ public class MappingEngine : IDisposable
     public void Stop()
     {
         _running = false;
-        _gamepad.Stop();
-        if (_xinputActive) _xinput.Stop();
+        _xinput.Stop();
         _gameMonitor.Stop();
 
-        // Reset triggers
         _device.ResetTriggers();
         _activeForceAdapt = null;
 
@@ -121,7 +99,6 @@ public class MappingEngine : IDisposable
         Stop();
         _cts.Cancel();
         _cts.Dispose();
-        _gamepad.StateChanged -= OnGamepadStateChanged;
         _gameMonitor.GameStateChanged -= OnGameStateChanged;
         _gameMonitor.GameProcessChanged -= OnGameProcessChanged;
         _xinput.StateChanged -= OnXInputStateChanged;
@@ -341,13 +318,6 @@ public class MappingEngine : IDisposable
             if (step.DurationMs > 0)
                 await Task.Delay(step.DurationMs);
         }
-    }
-
-    private void OnGamepadStateChanged(object? sender, HIDGamepadState state)
-    {
-        // Update game state from HID gamepad input
-        if (!_gameMonitor.IsGameRunning || ButtonMapping == null) return;
-        _gameMonitor.UpdateFromHID(state, ButtonMapping);
     }
 
     private void OnGameStateChanged(object? sender, GameState state)
