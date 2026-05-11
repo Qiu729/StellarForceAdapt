@@ -179,9 +179,21 @@ public class HIDGamepadReader : IDisposable
     private static HIDGamepadState DecodeAnalog(byte[] buf)
     {
         byte triggerRaw = buf[10];
-        // B10: 128=rest, >128=left trigger, <128=right trigger
-        byte leftTrigger = triggerRaw > 128 ? (byte)Math.Min((triggerRaw - 128) * 2, 255) : (byte)0;
-        byte rightTrigger = triggerRaw < 128 ? (byte)Math.Min((128 - triggerRaw) * 2, 255) : (byte)0;
+        byte leftTrigger, rightTrigger;
+
+        // B9 bit7 = trigger-activity flag. When set and B10 near midpoint,
+        // both triggers are likely pressed simultaneously.
+        bool triggerActive = (buf[9] & 0x80) != 0;
+        if (triggerActive && triggerRaw >= 120 && triggerRaw <= 136)
+        {
+            leftTrigger = 128;
+            rightTrigger = 128;
+        }
+        else
+        {
+            leftTrigger = triggerRaw > 128 ? (byte)((triggerRaw - 128) * 255 / 127) : (byte)0;
+            rightTrigger = triggerRaw < 128 ? (byte)((128 - triggerRaw) * 255 / 128) : (byte)0;
+        }
 
         return new HIDGamepadState
         {

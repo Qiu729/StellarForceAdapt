@@ -239,6 +239,30 @@ public static class ForceAdaptProtocol
                 ];
             }
 
+            /// <summary>
+            /// Build V2 apply sequence with explicit LT/RT slot state for both sides.
+            /// Caller provides pre-built 10-byte ltSlot and rtSlot so per-side state
+            /// (mode, p0..p4) is preserved independently.
+            /// </summary>
+            public static byte[][] BuildApplySequenceV2(
+                byte[] a5Custom23, byte[] end4, byte[] begin,
+                byte[] ltSlot, byte[] rtSlot,
+                byte[]? hapticData)
+            {
+                var seq = new List<byte[]>
+                {
+                    BuildSetStatusPrefix(),
+                    BuildCmd(CmdConfig, SubBeginConfig, begin),
+                    BuildCmd(CmdSetEffect, SubSetForceAdapt, a5Custom23),
+                    BuildCmd(CmdEndConfig, SubEndConfig, end4),
+                    BuildCmd(CmdSaveProfile, SubSaveProfile, ltSlot),
+                    BuildCmd(CmdSaveProfile, SubSaveProfile, rtSlot),
+                };
+                if (hapticData != null)
+                    seq.Add(BuildCmd(0x52, 0x0B, hapticData));
+                return [.. seq];
+            }
+
             public static readonly string[] V2PacketNames =
                 ["11 STATUS", "A4 BEGIN", "A5 SET", "A6 END", "51 LT", "51 RT", "52 HAPTIC"];
         }

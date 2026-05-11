@@ -18,6 +18,12 @@ public class FlyDigiDevice : IDisposable
     private readonly SemaphoreSlim _streamLock = new(1, 1);
     private bool _rumbleReportedUnsupported;
 
+    // Per-side effect state — preserves the other side when applying to one.
+    private ForceAdaptProtocol.ForceAdaptMode _currentLtMode = ForceAdaptProtocol.ForceAdaptMode.Off;
+    private ForceAdaptProtocol.ForceAdaptMode _currentRtMode = ForceAdaptProtocol.ForceAdaptMode.Off;
+    private byte _ltP0, _ltP1, _ltP2, _ltP3, _ltP4;
+    private byte _rtP0, _rtP1, _rtP2, _rtP3, _rtP4;
+
     public bool IsConnected => _stream?.CanWrite == true;
     public string? DeviceName => _device?.GetFriendlyName();
     public int? ProductId => _device?.ProductID;
@@ -230,28 +236,26 @@ public class FlyDigiDevice : IDisposable
 
     /// <summary>
     /// V2 ForceAdapt entry point: apply a (side, mode) effect using byte-exact
-    /// templates captured from SpaceStation. Handles non-vibration (6 packets)
-    /// and vibration (7 packets with 0x52 haptic) transparently.
+    /// templates captured from SpaceStation. Preserves the other side's effect.
     /// </summary>
     public (bool ok, string details) ApplyTriggerEffect(
         ForceAdaptProtocol.TriggerSide side,
         ForceAdaptProtocol.ForceAdaptMode mode)
     {
-        var seq = ForceAdaptProtocol.VendorProtocol.CapturedReplay
-            .BuildApplySequenceV2(side, mode);
-        var names = ForceAdaptProtocol.VendorProtocol.CapturedReplay.V2PacketNames;
+        var (set23, end4) = ForceAdaptProtocol.VendorProtocol.CapturedReplay.GetTemplate(side, mode);
+        var begin = ForceAdaptProtocol.VendorProtocol.CapturedReplay.GetBegin(side);
 
-        var sb = new System.Text.StringBuilder();
-        sb.Append('[').Append(side).Append(' ').Append(mode).Append("] ");
-        bool allOk = true;
-        for (int i = 0; i < seq.Length; i++)
-        {
-            bool ok = SendVendorCommand(seq[i]);
-            sb.Append(ok ? "✓" : "✗").Append(names[i]).Append(' ');
-            if (!ok) allOk = false;
-            Thread.Sleep(12);
-        }
-        return (allOk, sb.ToString().TrimEnd());
+        byte p0 = set23[16], p1 = set23[17], p2 = set23[18], p3 = set23[19], p4 = set23[20];
+        SaveSideState(side, mode, p0, p1, p2, p3, p4);
+
+        byte[] ltSlot = BuildSlot(0x01, _currentLtMode, _ltP0, _ltP1, _ltP2, _ltP3, _ltP4);
+        byte[] rtSlot = BuildSlot(0x02, _currentRtMode, _rtP0, _rtP1, _rtP2, _rtP3, _rtP4);
+        byte[]? haptic = mode == ForceAdaptProtocol.ForceAdaptMode.Vibration
+            ? BuildHaptic(side, set23) : null;
+
+        var seq = ForceAdaptProtocol.VendorProtocol.CapturedReplay
+            .BuildApplySequenceV2(set23, end4, begin, ltSlot, rtSlot, haptic);
+        return SendSequence(seq, $"[{side} {mode}]");
     }
 
     /// <summary>
@@ -263,6 +267,51 @@ public class FlyDigiDevice : IDisposable
         Thread.Sleep(20);
         var (rOk, rDetails) = ApplyTriggerEffect(ForceAdaptProtocol.TriggerSide.RT, mode);
         return (lOk && rOk, lDetails + " | " + rDetails);
+    }
+
+    private static byte[] BuildSlot(byte sideMarker, ForceAdaptProtocol.ForceAdaptMode mode,
+        byte p0, byte p1, byte p2, byte p3, byte p4)
+    {
+        if (mode == ForceAdaptProtocol.ForceAdaptMode.Vibration)
+            return [0x01, sideMarker, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        return [0x01, sideMarker, (byte)mode, p0, p1, p2, p3, p4, 0x00, 0x00];
+    }
+
+    private static byte[] BuildHaptic(ForceAdaptProtocol.TriggerSide side, byte[] a5Payload)
+    {
+        byte sideByte = side == ForceAdaptProtocol.TriggerSide.LT ? (byte)0x01 : (byte)0x02;
+        return [sideByte, 0x02,
+            a5Payload[8], a5Payload[9], a5Payload[10], a5Payload[11],
+            a5Payload[12], a5Payload[13], a5Payload[14], a5Payload[15], 0x00];
+    }
+
+    private void SaveSideState(ForceAdaptProtocol.TriggerSide side, ForceAdaptProtocol.ForceAdaptMode mode,
+        byte p0, byte p1, byte p2, byte p3, byte p4)
+    {
+        if (side == ForceAdaptProtocol.TriggerSide.LT)
+        {
+            _currentLtMode = mode; _ltP0 = p0; _ltP1 = p1; _ltP2 = p2; _ltP3 = p3; _ltP4 = p4;
+        }
+        else
+        {
+            _currentRtMode = mode; _rtP0 = p0; _rtP1 = p1; _rtP2 = p2; _rtP3 = p3; _rtP4 = p4;
+        }
+    }
+
+    private (bool ok, string details) SendSequence(byte[][] seq, string prefix)
+    {
+        var names = ForceAdaptProtocol.VendorProtocol.CapturedReplay.V2PacketNames;
+        var sb = new System.Text.StringBuilder();
+        sb.Append(prefix).Append(' ');
+        bool allOk = true;
+        for (int i = 0; i < seq.Length; i++)
+        {
+            bool ok = SendVendorCommand(seq[i]);
+            sb.Append(ok ? '+' : '-').Append(names[i]).Append(' ');
+            if (!ok) allOk = false;
+            Thread.Sleep(12);
+        }
+        return (allOk, sb.ToString().TrimEnd());
     }
 
     /// <summary>
