@@ -306,25 +306,8 @@
                                 <!-- Manual Test -->
                                 <Border Background="{StaticResource BgMedium}" CornerRadius="6" Padding="8" Margin="0,0,0,8">
                                     <StackPanel>
-                                        <TextBlock Text="手动测试" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,4" />
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="*" />
-                                            </Grid.ColumnDefinitions>
-                                            <Grid.RowDefinitions>
-                                                <RowDefinition Height="Auto" />
-                                                <RowDefinition Height="Auto" />
-                                                <RowDefinition Height="Auto" />
-                                            </Grid.RowDefinitions>
-                                            <Button Grid.Row="0" Grid.Column="0" Content="测试 RT 阻力" Click="TestForceAdaptRT_Click" Height="28" FontSize="11" Margin="1" />
-                                            <Button Grid.Row="0" Grid.Column="1" Content="测试 RT 振动" Click="TestForceAdaptVibrate_Click" Height="28" FontSize="11" Margin="1" />
-                                            <Button Grid.Row="1" Grid.Column="0" Content="测试 LT 阻力" Click="TestForceAdaptLT_Click" Height="28" FontSize="11" Margin="1" />
-                                            <Button Grid.Row="1" Grid.Column="1" Content="测试扳机马达" Click="TestRumble_Click" Height="28" FontSize="11" Margin="1" />
-                                            <Button Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" Content="停止全部" Click="TestStopAll_Click" Height="28" FontSize="11" Margin="1" Background="#C62828" Foreground="White" />
-                                        </Grid>
                                         <TextBlock Text="V2 ForceAdapt · LT/RT × 6 模式 (字节精确抓包 Replay)"
-                                                   FontSize="12" FontWeight="SemiBold" Margin="0,8,0,2" Foreground="#90CAF9" />
+                                                   FontSize="12" FontWeight="SemiBold" Margin="0,0,0,2" Foreground="#90CAF9" />
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="Auto" />
@@ -367,41 +350,6 @@
                                         </Grid>
                                         <Button Content="🧹 V2 清空双扳机 (LT Off + RT Off)" Click="V2ClearBoth_Click"
                                                 Height="26" FontSize="11" Margin="1,4,1,2" Foreground="White" Background="#455A64" />
-                                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                            <Button Content="🔍 枚举 HID 接口" Click="EnumInterfaces_Click" Height="26" FontSize="11" Width="130" Margin="0,0,4,0" />
-                                            <Button Content="⛔ 停止服务+测试" Click="StopServiceAndTest_Click" Height="26" FontSize="11" Foreground="White" Background="#D32F2F" />
-                                        </StackPanel>
-                                        <Button Content="🛑 仅关闭 SpaceStation (避免接口冲突)" Click="StopSpaceStationOnly_Click" Height="26" FontSize="11" Margin="0,2,0,0" Foreground="White" Background="#7B1FA2" />
-                                        <Button Content="🌐 广播 Slot 2 到所有 HID 接口 (定位可写接口)" Click="BroadcastAllInterfaces_Click" Height="26" FontSize="11" Margin="0,2,0,0" Foreground="White" Background="#00695C" />
-                                        <Button Content="💢 广播强振动到所有 HID 接口 (最强可感知反馈)" Click="BroadcastStrongRumble_Click" Height="26" FontSize="11" Margin="0,2,0,0" Foreground="White" Background="#C62828" />
-                                        <Button Content="🚀 完整激活序列 Slot 2 (含 0x51 ACTIVATE+FINALIZE) ★★★" Click="FullActivationSlot2_Click" Height="30" FontSize="12" FontWeight="Bold" Margin="0,4,0,0" Foreground="White" Background="#2E7D32" />
-                                        <Button Content="🚀 完整激活 轮询 Slot 1→4" Click="FullActivationAllSlots_Click" Height="26" FontSize="11" Margin="0,2,0,0" Foreground="White" Background="#388E3C" />
-                                        <TextBlock Text="抓包 Replay (字节精确)" FontSize="12" FontWeight="SemiBold" Margin="0,8,0,2" />
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="*" />
-                                            </Grid.ColumnDefinitions>
-                                            <Button Grid.Column="0" Content="Slot 1" Tag="1" Click="ReplayCaptured_Click" Height="26" FontSize="11" Margin="1" />
-                                            <Button Grid.Column="1" Content="Slot 2" Tag="2" Click="ReplayCaptured_Click" Height="26" FontSize="11" Margin="1" />
-                                            <Button Grid.Column="2" Content="Slot 3" Tag="3" Click="ReplayCaptured_Click" Height="26" FontSize="11" Margin="1" />
-                                            <Button Grid.Column="3" Content="Slot 4" Tag="4" Click="ReplayCaptured_Click" Height="26" FontSize="11" Margin="1" />
-                                        </Grid>
-                                        <Button Content="🔁 Replay 全部 Slot (轮询)" Click="ReplayAllSlots_Click" Height="26" FontSize="11" Margin="1,2,1,1" />
-                                        <TextBlock Text="LT/RT 映射探测 (含 0x11 前置)" FontSize="12" FontWeight="SemiBold" Margin="0,8,0,2" />
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="*" />
-                                            </Grid.ColumnDefinitions>
-                                            <Button Grid.Column="0" Content="[8,9]=0A,0A" Tag="0A0A" Click="ProbeTriggerMap_Click" Height="26" FontSize="11" Margin="1" />
-                                            <Button Grid.Column="1" Content="仅 [8]=0A" Tag="0A00" Click="ProbeTriggerMap_Click" Height="26" FontSize="11" Margin="1" />
-                                            <Button Grid.Column="2" Content="仅 [9]=0A" Tag="000A" Click="ProbeTriggerMap_Click" Height="26" FontSize="11" Margin="1" />
-                                        </Grid>
-                                        <Button Content="🔁 轮询 LT/RT 映射探测" Click="ProbeAllTriggerMaps_Click" Height="26" FontSize="11" Margin="1,2,1,1" />
                                     </StackPanel>
                                 </Border>
                             </StackPanel>

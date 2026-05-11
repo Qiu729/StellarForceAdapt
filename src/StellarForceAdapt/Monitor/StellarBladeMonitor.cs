@@ -19,24 +19,6 @@ public class StellarBladeMonitor : IDisposable
     private static readonly string[] s_processNames =
         ["StellarBlade", "StellarBlade-Win64-Shipping"];
 
-    // Memory offsets (will need updating if game patches change these)
-    // These are placeholder offsets - the real values need to be discovered
-    private static class Offsets
-    {
-        // Player state structure offsets (relative to base address)
-        public const int PlayerBase = 0x0;        // Will be resolved at runtime
-        public const int WeaponType = 0x0;        // Current weapon type
-        public const int CombatState = 0x0;       // In combat or not
-        public const int Health = 0x0;            // Current health
-        public const int MaxHealth = 0x0;         // Max health
-        public const int IsAiming = 0x0;          // Is character aiming
-        public const int IsSprinting = 0x0;       // Is sprinting
-        public const int IsAttacking = 0x0;       // Currently attacking
-        public const int ComboCount = 0x0;        // Current combo count
-        public const int SkillReady = 0x0;        // Skill/Burst ready
-        public const int MovementSpeed = 0x0;     // Current movement speed
-    }
-
     public bool IsGameRunning => _gameProcess?.HasExited == false;
     public bool IsMonitoring => _monitorThread?.IsAlive == true;
 
@@ -61,27 +43,6 @@ public class StellarBladeMonitor : IDisposable
         _cts?.Cancel();
         _monitorThread = null;
         CloseProcessHandle();
-    }
-
-    /// <summary>
-    /// Try to read game memory for detailed state.
-    /// Returns null if memory reading fails.
-    /// </summary>
-    public GameState? TryReadMemoryState()
-    {
-        if (!IsGameRunning || _processHandle == nint.Zero)
-            return null;
-
-        try
-        {
-            // TODO: Implement actual memory reading once offsets are discovered
-            // For now, return null to trigger XInput-based fallback
-            return null;
-        }
-        catch
-        {
-            return null;
-        }
     }
 
     /// <summary>
@@ -253,9 +214,6 @@ public class StellarBladeMonitor : IDisposable
 
     [DllImport("kernel32.dll")]
     private static extern bool CloseHandle(nint hObject);
-
-    [DllImport("kernel32.dll")]
-    private static extern bool ReadProcessMemory(nint hProcess, nint lpBaseAddress, byte[] lpBuffer, int dwSize, out int lpNumberOfBytesRead);
 }
 
 // --- Game State Types ---
