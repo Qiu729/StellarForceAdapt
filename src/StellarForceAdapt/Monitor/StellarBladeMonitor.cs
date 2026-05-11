@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using StellarForceAdapt.Mapping;
 
 namespace StellarForceAdapt.Monitor;
 
@@ -43,56 +42,6 @@ public class StellarBladeMonitor : IDisposable
         _cts?.Cancel();
         _monitorThread = null;
         CloseProcessHandle();
-    }
-
-    /// <summary>
-    /// Update game state based on HID gamepad data (primary detection method for FlyDigi).
-    /// Stellar Blade PC default controls:
-    ///   X/Y = melee attacks, LB = block, LT = aim, RT = shoot, B = dodge, A = jump
-    /// </summary>
-    public void UpdateFromHID(HIDGamepadState state, Mapping.ControllerMapping mapping)
-    {
-        var raw = state.Raw ?? [];
-        var gameState = new GameState
-        {
-            IsRunning = IsGameRunning,
-            Timestamp = DateTime.UtcNow,
-            DetectionSource = DetectionSource.Hybrid,
-        };
-
-        bool attackPressed = mapping.IsPressed("X", raw) || mapping.IsPressed("Y", raw);
-        bool blockPressed = mapping.IsPressed("LB", raw);
-        bool dodgePressed = mapping.IsPressed("B", raw);
-        bool shootPressed = state.RightTrigger > 30;
-        bool aimPressed = state.LeftTrigger > 30;
-        bool l3Pressed = mapping.IsPressed("L3", raw);
-        int stickMag = Math.Max(Math.Abs(state.LeftThumbX), Math.Abs(state.LeftThumbY));
-
-        if (aimPressed && shootPressed)
-            gameState.PlayerAction = PlayerAction.AimingAndShooting;
-        else if (aimPressed)
-            gameState.PlayerAction = PlayerAction.Aiming;
-        else if (attackPressed)
-            gameState.PlayerAction = PlayerAction.MeleeAttack;
-        else if (shootPressed)
-            gameState.PlayerAction = PlayerAction.ShootingWeapon;
-        else if (blockPressed)
-            gameState.PlayerAction = PlayerAction.Blocking;
-        else if (dodgePressed)
-            gameState.PlayerAction = PlayerAction.Dodging;
-        else if (l3Pressed || stickMag > 20000)
-            gameState.PlayerAction = PlayerAction.Sprinting;
-        else if (stickMag > 5000)
-            gameState.PlayerAction = PlayerAction.Walking;
-        else
-            gameState.PlayerAction = PlayerAction.Idle;
-
-        gameState.LeftTriggerPosition = state.LeftTrigger;
-        gameState.RightTriggerPosition = state.RightTrigger;
-        gameState.InCombat = attackPressed || blockPressed || shootPressed;
-
-        CurrentState = gameState;
-        GameStateChanged?.Invoke(this, gameState);
     }
 
     /// <summary>
