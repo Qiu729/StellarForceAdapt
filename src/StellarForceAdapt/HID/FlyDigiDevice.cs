@@ -425,7 +425,7 @@ public class FlyDigiDevice : IDisposable
             return;
         }
 
-        // Non-CD2: no read loop (HIDGamepadReader handles input).
+        // Non-CD2: no read loop (input handled by XInput).
         while (!token.IsCancellationRequested)
         {
             _streamLock.Wait(token);
