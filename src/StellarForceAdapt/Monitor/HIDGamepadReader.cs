@@ -24,15 +24,26 @@ public class HIDGamepadReader : IDisposable
     public bool IsConnected => _stream?.CanRead == true;
     public bool IsRunning => _running;
 
+    /// <summary>Diagnostic log callback for UI integration (set by MainWindow).</summary>
+    public static Action<string>? Log;
+
     public bool Connect()
     {
         Disconnect();
 
-        var device = DeviceList.Local
+        var devices = DeviceList.Local
             .GetHidDevices()
-            .FirstOrDefault(d => d.VendorID == VendorId && d.DevicePath.Contains("ig_01"));
+            .Where(d => d.VendorID == VendorId).ToArray();
+
+        // 1) Precise ig_01 match
+        var device = devices.FirstOrDefault(d => d.DevicePath.Contains("ig_01"));
+
+        // 2) Non-CD2 (PID != 0x6001) with exactly 15-byte input report
+        device ??= devices.FirstOrDefault(d =>
+            d.ProductID != 0x6001 && d.GetMaxInputReportLength() == ReportLength);
 
         if (device == null) return false;
+        Log?.Invoke($"📡 HID 输入接口: {device.DevicePath}");
 
         try
         {

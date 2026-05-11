@@ -76,6 +76,10 @@ public partial class MainWindow : Window
             ButtonMapping = _mapping
         };
 
+        // Wire diagnostics to log file
+        HIDGamepadReader.Log = msg => Log(msg);
+        FlyDigiDevice.Log = msg => Log(msg);
+
         // Wire events
         _device.ConnectionChanged += OnControllerConnectionChanged;
         _device.InputReportReceived += OnControllerInputReport;
@@ -229,7 +233,12 @@ public partial class MainWindow : Window
 
     private void OnEngineStatusChanged(object? sender, string status)
     {
-        Dispatcher.Invoke(() => SetStatus(status));
+        Dispatcher.Invoke(() =>
+        {
+            SetStatus(status);
+            if (status.StartsWith("HID") || status.Contains("降级") || status.Contains("Profile"))
+                Log($"ℹ️ {status}");
+        });
     }
 
     private void OnGameStateUpdate(object? sender, GameState state)

@@ -17,7 +17,7 @@ public class StellarBladeMonitor : IDisposable
 
     // Possible process names for Stellar Blade
     private static readonly string[] s_processNames =
-        ["StellarBlade", "StellarBlade-Win64-Shipping"];
+        ["StellarBlade", "StellarBlade-Win64-Shipping", "SB"];
 
     public bool IsGameRunning => _gameProcess?.HasExited == false;
     public bool IsMonitoring => _monitorThread?.IsAlive == true;
@@ -65,6 +65,8 @@ public class StellarBladeMonitor : IDisposable
         bool dodgePressed = mapping.IsPressed("B", raw);
         bool shootPressed = state.RightTrigger > 30;
         bool aimPressed = state.LeftTrigger > 30;
+        bool l3Pressed = mapping.IsPressed("L3", raw);
+        int stickMag = Math.Max(Math.Abs(state.LeftThumbX), Math.Abs(state.LeftThumbY));
 
         if (aimPressed && shootPressed)
             gameState.PlayerAction = PlayerAction.AimingAndShooting;
@@ -78,6 +80,10 @@ public class StellarBladeMonitor : IDisposable
             gameState.PlayerAction = PlayerAction.Blocking;
         else if (dodgePressed)
             gameState.PlayerAction = PlayerAction.Dodging;
+        else if (l3Pressed || stickMag > 20000)
+            gameState.PlayerAction = PlayerAction.Sprinting;
+        else if (stickMag > 5000)
+            gameState.PlayerAction = PlayerAction.Walking;
         else
             gameState.PlayerAction = PlayerAction.Idle;
 
@@ -108,6 +114,8 @@ public class StellarBladeMonitor : IDisposable
         bool dodgePressed = (xinput.Buttons & 0x2000) != 0; // B
         bool shootPressed = xinput.RightTrigger > 30;
         bool aimPressed = xinput.LeftTrigger > 30;
+        bool l3Pressed = (xinput.Buttons & 0x0040) != 0;
+        int stickMag = Math.Max(Math.Abs(xinput.LeftThumbX), Math.Abs(xinput.LeftThumbY));
 
         if (aimPressed && shootPressed)
             state.PlayerAction = PlayerAction.AimingAndShooting;
@@ -121,6 +129,10 @@ public class StellarBladeMonitor : IDisposable
             state.PlayerAction = PlayerAction.Blocking;
         else if (dodgePressed)
             state.PlayerAction = PlayerAction.Dodging;
+        else if (l3Pressed || stickMag > 20000)
+            state.PlayerAction = PlayerAction.Sprinting;
+        else if (stickMag > 5000)
+            state.PlayerAction = PlayerAction.Walking;
         else
             state.PlayerAction = PlayerAction.Idle;
 

@@ -11,9 +11,27 @@ public class FlyDigiDevice : IDisposable
     private CancellationTokenSource? _cts;
     private int _connectionGen;
 
+    // Serializes all HidStream access. HidStream is NOT thread-safe:
+    // the WatchdogLoop reads, EngineLoop writes, and Disconnect swaps the stream.
+    // Without this lock, concurrent Read/Write on the same stream causes
+    // unpredictable failures that trigger the disconnect-reconnect cycle.
+    private readonly SemaphoreSlim _streamLock = new(1, 1);
+    private bool _rumbleReportedUnsupported;
+
     public bool IsConnected => _stream?.CanWrite == true;
     public string? DeviceName => _device?.GetFriendlyName();
     public int? ProductId => _device?.ProductID;
+
+    /// <summary>
+    /// True when the connected HID interface supports standard output reports
+    /// (ReportID 0x05) for rumble. Wired APEX5 (0x2501) uses a vendor-only
+    /// 32-byte interface that only accepts ReportID 0x03 — rumble requires
+    /// 65-byte output (CD2 wireless or gamepad interface).
+    /// </summary>
+    public bool RumbleSupported { get; private set; }
+
+    /// <summary>Diagnostic log callback (set by MainWindow).</summary>
+    public static Action<string>? Log;
 
     public event EventHandler<bool>? ConnectionChanged;
     public event EventHandler<byte[]>? InputReportReceived;
@@ -27,12 +45,26 @@ public class FlyDigiDevice : IDisposable
 
         try
         {
-            _stream = _device.Open();
-            _stream.ReadTimeout = Timeout.Infinite;
+            var newStream = _device.Open();
+            newStream.ReadTimeout = Timeout.Infinite;
 
-            _cts = new CancellationTokenSource();
-            _watchdogThread = new Thread(WatchdogLoop) { IsBackground = true, Name = "HID-Watchdog" };
-            _watchdogThread.Start();
+            var newCts = new CancellationTokenSource();
+            var newThread = new Thread(WatchdogLoop) { IsBackground = true, Name = "HID-Watchdog" };
+
+            _streamLock.Wait();
+            try
+            {
+                _stream = newStream;
+                _cts = newCts;
+                _watchdogThread = newThread;
+            }
+            finally { _streamLock.Release(); }
+
+            // Rumble via ReportID 0x05 requires output report length >= 65.
+            // Wired APEX5 (32-byte, vendor-only) doesn't support it.
+            RumbleSupported = _device.GetMaxOutputReportLength() >= 65;
+
+            newThread.Start();
 
             ConnectionChanged?.Invoke(this, true);
             Debug.WriteLine($"[HID] Connected to {DeviceName} (PID=0x{ProductId:X4})");
@@ -41,8 +73,6 @@ public class FlyDigiDevice : IDisposable
         catch (Exception ex)
         {
             Debug.WriteLine($"[HID] Connection failed: {ex.Message}");
-            _stream?.Dispose();
-            _stream = null;
             _device = null;
             return false;
         }
@@ -50,18 +80,27 @@ public class FlyDigiDevice : IDisposable
 
     public void Disconnect()
     {
-        _connectionGen++;
-        _cts?.Cancel();
-
-        if (_stream != null)
+        HidStream? oldStream;
+        _streamLock.Wait();
+        try
         {
-            var oldStream = _stream;
+            _connectionGen++;
+            _cts?.Cancel();
+
+            oldStream = _stream;
             _stream = null;
+            _device = null;
+            _watchdogThread = null;
+        }
+        finally { _streamLock.Release(); }
+
+        RumbleSupported = false;
+
+        if (oldStream != null)
+        {
             ConnectionChanged?.Invoke(this, false);
             oldStream.Dispose();
         }
-        _device = null;
-        _watchdogThread = null;
     }
 
     public bool TryReconnect()
@@ -74,14 +113,19 @@ public class FlyDigiDevice : IDisposable
     /// Send a raw HID output report. Used for rumble commands.
     /// Auto-pads or trims to the device's output report length.
     /// </summary>
-    public bool SendReport(byte[] report)
+    public bool SendReport(byte[] report, bool reconnectOnFailure = true)
     {
-        if (_stream?.CanWrite != true) return false;
-        int myGen = _connectionGen;
-
+        int myGen = 0;
+        bool shouldNotify = false;
+        _streamLock.Wait();
         try
         {
-            int reportLen = _device?.GetMaxOutputReportLength() ?? ForceAdaptProtocol.OutputReportLength;
+            var stream = _stream;
+            var device = _device;
+            if (stream?.CanWrite != true) return false;
+            myGen = _connectionGen;
+
+            int reportLen = device?.GetMaxOutputReportLength() ?? ForceAdaptProtocol.OutputReportLength;
             if (report.Length < reportLen)
             {
                 var padded = new byte[reportLen];
@@ -95,15 +139,39 @@ public class FlyDigiDevice : IDisposable
                 report = trimmed;
             }
 
-            _stream.Write(report, 0, report.Length);
+            stream.Write(report, 0, report.Length);
             return true;
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[HID] Write failed: {ex.Message}");
             if (_connectionGen == myGen)
-                ConnectionChanged?.Invoke(this, false);
+            {
+                if (reconnectOnFailure)
+                {
+                    int outLen = _device?.GetMaxOutputReportLength() ?? 0;
+                    byte rid = report.Length > 0 ? report[0] : (byte)0;
+                    Log?.Invoke($"[HID] SendReport fail: {ex.GetType().Name}: {ex.Message}"
+                        + $" | ReportID=0x{rid:X2} len={report.Length} devOutLen={outLen}");
+                    // Null out the stream so IsConnected immediately returns false
+                    // and the engine stops retrying on the dead handle.
+                    _stream = null;
+                    _device = null;
+                    shouldNotify = true;
+                }
+                else if (!_rumbleReportedUnsupported)
+                {
+                    _rumbleReportedUnsupported = true;
+                    Log?.Invoke($"[HID] Rumble not supported on this interface — "
+                        + $"suppressing further reports (ReportID=0x{report[0]:X2})");
+                }
+            }
             return false;
+        }
+        finally
+        {
+            _streamLock.Release();
+            if (shouldNotify)
+                ConnectionChanged?.Invoke(this, false);
         }
     }
 
@@ -113,12 +181,17 @@ public class FlyDigiDevice : IDisposable
     /// </summary>
     public bool SendVendorCommand(byte[] vendorCmd32)
     {
-        if (_stream?.CanWrite != true) return false;
-        int myGen = _connectionGen;
-
+        int myGen = 0;
+        bool shouldNotify = false;
+        _streamLock.Wait();
         try
         {
-            int reportLen = _device?.GetMaxOutputReportLength() ?? 65;
+            var stream = _stream;
+            var device = _device;
+            if (stream?.CanWrite != true) return false;
+            myGen = _connectionGen;
+
+            int reportLen = device?.GetMaxOutputReportLength() ?? 65;
             byte[] report;
             if (reportLen == 32)
             {
@@ -129,15 +202,29 @@ public class FlyDigiDevice : IDisposable
                 report = new byte[reportLen];
                 Array.Copy(vendorCmd32, 0, report, 0, Math.Min(vendorCmd32.Length, reportLen));
             }
-            _stream.Write(report, 0, report.Length);
+            stream.Write(report, 0, report.Length);
             return true;
         }
         catch (Exception ex)
         {
+            byte rid = vendorCmd32.Length > 0 ? vendorCmd32[0] : (byte)0;
+            int outLen = _device?.GetMaxOutputReportLength() ?? 0;
+            Log?.Invoke($"[HID] VendorCmd fail: {ex.GetType().Name}: {ex.Message}"
+                + $" | ReportID=0x{rid:X2} cmdLen={vendorCmd32.Length} devOutLen={outLen}");
             Debug.WriteLine($"[HID] Vendor write failed: {ex.Message}");
             if (_connectionGen == myGen)
-                ConnectionChanged?.Invoke(this, false);
+            {
+                _stream = null;
+                _device = null;
+                shouldNotify = true;
+            }
             return false;
+        }
+        finally
+        {
+            _streamLock.Release();
+            if (shouldNotify)
+                ConnectionChanged?.Invoke(this, false);
         }
     }
 
@@ -188,13 +275,16 @@ public class FlyDigiDevice : IDisposable
     }
 
     /// <summary>
-    /// Send rumble to both trigger motors.
+    /// Send rumble to both trigger motors (best-effort, no reconnection on failure).
+    /// The wired 0x2501 vendor interface does not accept rumble ReportID 0x05
+    /// (only vendor ReportID 0x03). Check RumbleSupported before calling.
     /// </summary>
     public bool SetTriggerRumble(byte left = 0, byte right = 0)
     {
+        if (!RumbleSupported) return false;
         return SendReport(ForceAdaptProtocol.BuildRumbleCommand(
             leftTriggerRumble: left,
-            rightTriggerRumble: right));
+            rightTriggerRumble: right), reconnectOnFailure: false);
     }
 
     /// <summary>
@@ -221,6 +311,7 @@ public class FlyDigiDevice : IDisposable
         ResetTriggers();
         Disconnect();
         _cts?.Dispose();
+        _streamLock.Dispose();
     }
 
     /// <summary>
@@ -251,38 +342,49 @@ public class FlyDigiDevice : IDisposable
     private void WatchdogLoop()
     {
         var token = _cts?.Token ?? CancellationToken.None;
-        var readBuffer = new byte[ForceAdaptProtocol.InputReportLength];
         int myGen = _connectionGen;
 
+        // CD2 (0x6001): read input reports for SpaceStation coexistence.
+        // Use TryLock to avoid blocking engine writes on the same stream.
         if (_device?.ProductID == 0x6001)
         {
-            while (!token.IsCancellationRequested && _stream != null)
+            var readBuffer = new byte[ForceAdaptProtocol.InputReportLength];
+            while (!token.IsCancellationRequested)
             {
-                try { token.WaitHandle.WaitOne(2000); }
-                catch { break; }
+                HidStream? stream;
+                _streamLock.Wait(token);
+                try { stream = _stream; }
+                finally { _streamLock.Release(); }
+                if (stream == null) break;
+
+                try
+                {
+                    stream.ReadTimeout = 200;
+                    int read = stream.Read(readBuffer, 0, readBuffer.Length);
+                    if (read > 0 && _connectionGen == myGen)
+                        InputReportReceived?.Invoke(this, readBuffer.Take(read).ToArray());
+                }
+                catch (TimeoutException) { continue; }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[HID] Read error: {ex.Message}");
+                    if (_connectionGen == myGen)
+                        ConnectionChanged?.Invoke(this, false);
+                    break;
+                }
             }
             return;
         }
 
-        while (!token.IsCancellationRequested && _stream != null)
+        // Non-CD2: no read loop (HIDGamepadReader handles input).
+        while (!token.IsCancellationRequested)
         {
-            try
-            {
-                _stream.ReadTimeout = 200;
-                int read = _stream.Read(readBuffer, 0, readBuffer.Length);
-                if (read > 0 && _connectionGen == myGen)
-                {
-                    InputReportReceived?.Invoke(this, readBuffer.Take(read).ToArray());
-                }
-            }
-            catch (TimeoutException) { continue; }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[HID] Read error: {ex.Message}");
-                if (_connectionGen == myGen)
-                    ConnectionChanged?.Invoke(this, false);
-                break;
-            }
+            _streamLock.Wait(token);
+            try { if (_stream == null) break; }
+            finally { _streamLock.Release(); }
+
+            try { token.WaitHandle.WaitOne(2000); }
+            catch { break; }
         }
     }
 }

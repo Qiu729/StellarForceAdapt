@@ -77,7 +77,7 @@
         "intensity": 220,
         "speed": 0,
         "target": "left",
-        "duration_ms": 0
+        "duration_ms": 250
       }
     },
     {
@@ -189,7 +189,7 @@
         "intensity": 140,
         "speed": 100,
         "target": "right",
-        "duration_ms": 0
+        "duration_ms": 200
       }
     },
     {
@@ -207,6 +207,23 @@
         "speed": 200,
         "target": "both",
         "duration_ms": 0
+      }
+    },
+    {
+      "id": "combat_baseline",
+      "name": "战斗基础震动",
+      "priority": 50,
+      "cooldown_ms": 500,
+      "condition": {
+        "action": "any",
+        "in_combat": true
+      },
+      "effect": {
+        "type": "rumble",
+        "mode": "vibrate",
+        "intensity": 40,
+        "target": "both",
+        "duration_ms": 300
       }
     }
   ]

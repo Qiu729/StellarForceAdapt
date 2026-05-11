@@ -24,6 +24,9 @@ public class MappingEngine : IDisposable
     private ForceAdaptEffectState? _activeForceAdapt;
     private DateTime _forceAdaptExpiry = DateTime.MinValue;
 
+    private readonly XInputWatcher _xinput = new();
+    private bool _xinputActive;
+
     private struct ForceAdaptEffectState
     {
         public ForceAdaptProtocol.ForceAdaptMode Mode;
@@ -50,6 +53,7 @@ public class MappingEngine : IDisposable
         _gamepad.StateChanged += OnGamepadStateChanged;
         _gameMonitor.GameStateChanged += OnGameStateChanged;
         _gameMonitor.GameProcessChanged += OnGameProcessChanged;
+        _xinput.StateChanged += OnXInputStateChanged;
     }
 
     public void SetProfile(TriggerProfile profile)
@@ -67,8 +71,23 @@ public class MappingEngine : IDisposable
         if (_running) return;
         _running = true;
 
-        if (!_gamepad.IsConnected) _gamepad.Connect();
-        _gamepad.Start();
+        // Use HID input when available (covers both CD2 wireless and wired 0x2501).
+        // FlyDigiDevice now serializes all stream access via SemaphoreSlim, so
+        // concurrent HIDGamepadReader reads (on a separate input stream) and
+        // FlyDigiDevice writes (on the output stream) no longer conflict.
+        bool hidOk = _gamepad.IsConnected || _gamepad.Connect();
+        if (hidOk)
+        {
+            _gamepad.Start();
+            _xinputActive = false;
+            StatusChanged?.Invoke(this, "HID 输入已启用");
+        }
+        else
+        {
+            _xinput.Start(4);
+            _xinputActive = true;
+            StatusChanged?.Invoke(this, "HID 未连接，降级到 XInput 输入");
+        }
         _gameMonitor.Start();
 
         _engineThread = new Thread(EngineLoop)
@@ -86,6 +105,7 @@ public class MappingEngine : IDisposable
     {
         _running = false;
         _gamepad.Stop();
+        if (_xinputActive) _xinput.Stop();
         _gameMonitor.Stop();
 
         // Reset triggers
@@ -104,6 +124,8 @@ public class MappingEngine : IDisposable
         _gamepad.StateChanged -= OnGamepadStateChanged;
         _gameMonitor.GameStateChanged -= OnGameStateChanged;
         _gameMonitor.GameProcessChanged -= OnGameProcessChanged;
+        _xinput.StateChanged -= OnXInputStateChanged;
+        _xinput.Dispose();
     }
 
     private void EngineLoop()
@@ -338,5 +360,11 @@ public class MappingEngine : IDisposable
         StatusChanged?.Invoke(this, running
             ? "Stellar Blade detected!"
             : "Waiting for Stellar Blade...");
+    }
+
+    private void OnXInputStateChanged(object? sender, XInputState state)
+    {
+        if (!_gameMonitor.IsGameRunning) return;
+        _gameMonitor.UpdateFromXInput(state);
     }
 }
