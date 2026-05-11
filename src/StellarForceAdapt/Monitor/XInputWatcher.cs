@@ -93,11 +93,11 @@ public class XInputWatcher : IDisposable
             TriggerChanged?.Invoke(this, new XInputTriggerEventArgs(TriggerType.Right, newState.RightTrigger));
 
         // Button changes
-        uint changed = newState.Buttons ^ prev.Buttons;
+        ushort changed = (ushort)(newState.Buttons ^ prev.Buttons);
         if (changed != 0)
         {
-            uint pressed = changed & newState.Buttons;
-            uint released = changed & prev.Buttons;
+            ushort pressed = (ushort)(changed & newState.Buttons);
+            ushort released = (ushort)(changed & prev.Buttons);
 
             foreach (var kvp in s_buttonNames)
             {
@@ -157,14 +157,14 @@ public class XInputWatcher : IDisposable
     [StructLayout(LayoutKind.Sequential)]
     private struct XInputGamepadRaw
     {
-        public uint wButtons;
+        public uint dwPacketNumber;
+        public ushort wButtons;
         public byte bLeftTrigger;
         public byte bRightTrigger;
         public short sThumbLX;
         public short sThumbLY;
         public short sThumbRX;
         public short sThumbRY;
-        public uint dwPadding;
     }
 }
 
@@ -173,7 +173,7 @@ public class XInputWatcher : IDisposable
 public struct XInputState
 {
     public bool Connected;
-    public uint Buttons;
+    public ushort Buttons;
     public byte LeftTrigger;
     public byte RightTrigger;
     public short LeftThumbX;
