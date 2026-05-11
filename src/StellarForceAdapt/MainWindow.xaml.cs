@@ -27,12 +27,10 @@ public partial class MainWindow : Window
 
     private static bool _consoleAttached;
     private readonly FlyDigiDevice _device = new();
-    private readonly HIDGamepadReader _gamepad = new();
     private readonly StellarBladeMonitor _gameMonitor = new();
     private readonly MappingEngine _engine;
     private readonly CancellationTokenSource _uiCts = new();
     private ControllerMapping _mapping = new();
-    private byte[]? _idleState;
 
     private bool _isRunning;
     private int _logCount;
@@ -41,9 +39,7 @@ public partial class MainWindow : Window
     private readonly string _mappingPath;
     private readonly string _logFilePath;
 
-    // Binding state
-    private string? _bindingTarget;
-    private byte[]? _bindingIdle;
+    // Binding state (disabled in XInput mode)
 
     // Reconnection guard
     private bool _isReconnecting;
@@ -71,13 +67,9 @@ public partial class MainWindow : Window
             Console.WriteLine($"[init] PowerShell 实时跟踪: Get-Content -Wait -Tail 40 '{_logFilePath}'");
         }
 
-        _engine = new MappingEngine(_device, _gamepad, _gameMonitor)
-        {
-            ButtonMapping = _mapping
-        };
+        _engine = new MappingEngine(_device, _gameMonitor);
 
         // Wire diagnostics to log file
-        HIDGamepadReader.Log = msg => Log(msg);
         FlyDigiDevice.Log = msg => Log(msg);
 
         // Wire events
@@ -105,7 +97,6 @@ public partial class MainWindow : Window
         _uiCts.Cancel();
         _engine.Stop();
         _device.Dispose();
-        _gamepad.Dispose();
         _gameMonitor.Dispose();
         base.OnClosed(e);
     }
@@ -134,7 +125,7 @@ public partial class MainWindow : Window
 
     private void UpdateTriggerDisplay()
     {
-        var state = _gamepad.CurrentState;
+        var state = _engine.CurrentInput;
         if (!state.Connected) return;
 
         LeftTriggerBar.Value = state.LeftTrigger;
@@ -145,7 +136,7 @@ public partial class MainWindow : Window
 
     private void UpdateStatusBar()
     {
-        var state = _gamepad.CurrentState;
+        var state = _engine.CurrentInput;
         var connected = state.Connected;
         var gameRunning = _gameMonitor.IsGameRunning;
 
@@ -349,24 +340,11 @@ public partial class MainWindow : Window
             }
 
             bool cd2Ok = _device.Connect();
-            bool hidOk = _gamepad.Connect();
 
-            if (cd2Ok && hidOk)
-                Log("✅ 手柄连接成功 (CD2+输入)");
-            else if (cd2Ok)
-                Log("⚠️ 手柄输出已连接，输入未连接");
+            if (cd2Ok)
+                Log("✅ 手柄连接成功 (CD2)");
             else
                 Log("⚠️ 手柄连接失败，请确认已通过 USB 连接");
-
-            // Capture idle state for debug display
-            if (hidOk)
-            {
-                _idleState = _gamepad.CaptureIdle();
-                if (_idleState != null)
-                    Log($"📊 空闲状态已捕获: {BitConverter.ToString(_idleState)}");
-                else
-                    Log("⚠️ 无法捕获空闲状态");
-            }
         }
         else
         {
@@ -417,61 +395,41 @@ public partial class MainWindow : Window
 
     private void UpdateDebugDisplay()
     {
-        var state = _gamepad.CurrentState;
-        if (!state.Connected || state.Raw == null || state.Raw.Length == 0) return;
+        var state = _engine.CurrentInput;
+        if (!state.Connected) return;
 
-        var raw = state.Raw;
+        RawHidText.Text = $"Buttons: 0x{state.Buttons:X4}";
+        RawChangesText.Text = $"LT:{state.LeftTrigger} RT:{state.RightTrigger} "
+            + $"LStick:({state.LeftThumbX},{state.LeftThumbY}) "
+            + $"RStick:({state.RightThumbX},{state.RightThumbY})";
 
-        // Raw HID hex
-        RawHidText.Text = BitConverter.ToString(raw);
-
-        // Byte changes from idle
-        if (_idleState != null)
-        {
-            var changes = new List<string>();
-            for (int i = 0; i < raw.Length && i < _idleState.Length; i++)
-            {
-                if (raw[i] != _idleState[i])
-                    changes.Add($"B{i}:{_idleState[i]:X2}→{raw[i]:X2}");
-            }
-            RawChangesText.Text = changes.Count > 0
-                ? "变化: " + string.Join(", ", changes)
-                : "无变化";
-        }
-        else
-        {
-            _idleState = (byte[])raw.Clone();
-        }
-
-        // Button state indicators
-        SetButtonLight("A", raw);
-        SetButtonLight("B", raw);
-        SetButtonLight("X", raw);
-        SetButtonLight("Y", raw);
-        SetButtonLight("LB", raw);
-        SetButtonLight("RB", raw);
-        SetButtonLight("LT", raw);
-        SetButtonLight("RT", raw);
-
+        SetButtonLight("A", state);
+        SetButtonLight("B", state);
+        SetButtonLight("X", state);
+        SetButtonLight("Y", state);
+        SetButtonLight("LB", state);
+        SetButtonLight("RB", state);
+        SetButtonLight("LT", state);
+        SetButtonLight("RT", state);
     }
 
-    private void SetButtonLight(string name, byte[] raw)
+    private void SetButtonLight(string name, XInputState state)
     {
         var border = FindName($"Btn_{name}") as System.Windows.Controls.Border;
         if (border == null) return;
 
-        bool pressed;
-        if (name is "LT" or "RT")
+        bool pressed = name switch
         {
-            var val = name == "LT"
-                ? _gamepad.CurrentState.LeftTrigger
-                : _gamepad.CurrentState.RightTrigger;
-            pressed = val > 30;
-        }
-        else
-        {
-            pressed = _mapping.IsPressed(name, raw);
-        }
+            "A" => (state.Buttons & 0x1000) != 0,
+            "B" => (state.Buttons & 0x2000) != 0,
+            "X" => (state.Buttons & 0x4000) != 0,
+            "Y" => (state.Buttons & 0x8000) != 0,
+            "LB" => (state.Buttons & 0x0100) != 0,
+            "RB" => (state.Buttons & 0x0200) != 0,
+            "LT" => state.LeftTrigger > 30,
+            "RT" => state.RightTrigger > 30,
+            _ => false,
+        };
 
         border.Background = pressed
             ? new SolidColorBrush(Color.FromRgb(76, 175, 80))
@@ -482,68 +440,22 @@ public partial class MainWindow : Window
 
     private void BindButton_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is System.Windows.Controls.Button btn)
-        {
-            _bindingTarget = btn.Content?.ToString() switch
-            {
-                "A" => "A", "B" => "B", "X" => "X", "Y" => "Y",
-                "LB" => "LB", "RB" => "RB",
-                "LT" => "LT", "RT" => "RT",
-                _ => _bindingTarget
-            };
-
-            // Capture idle state
-            _bindingIdle = _gamepad.CaptureIdle();
-            BindStatusText.Text = $"⏳ 请按下 [{_bindingTarget}] 键...";
-            BindStatusText.Foreground = new SolidColorBrush(Color.FromRgb(255, 152, 0)); // orange
-        }
+        Log("⚠️ XInput 模式不支持自定义按键绑定");
     }
 
     private void CheckBinding()
     {
-        if (_bindingTarget == null || _bindingIdle == null) return;
-
-        var state = _gamepad.CurrentState;
-        if (state.Raw == null || state.Raw.Length == 0) return;
-
-        // Find which byte/bit changed from idle
-        for (int i = 0; i < state.Raw.Length && i < _bindingIdle.Length; i++)
-        {
-            byte diff = (byte)(state.Raw[i] ^ _bindingIdle[i]);
-            if (diff != 0)
-            {
-                // Find which bit changed
-                for (int bit = 0; bit < 8; bit++)
-                {
-                    if ((diff & (1 << bit)) != 0)
-                    {
-                        _mapping.SetMapping(_bindingTarget, i, bit);
-                        BindStatusText.Text = $"✅ {_bindingTarget} → B{i} bit {bit}";
-                        BindStatusText.Foreground = new SolidColorBrush(Color.FromRgb(76, 175, 80)); // green
-                        Log($"🔗 绑定: {_bindingTarget} → B{i}:{1 << bit:X2} (bit {bit})");
-                        _bindingTarget = null;
-                        _bindingIdle = null;
-                        _idleState = (byte[])state.Raw.Clone(); // update idle
-                        return;
-                    }
-                }
-            }
-        }
+        // XInput mode does not support custom button binding
     }
 
     private void SaveMapping_Click(object sender, RoutedEventArgs e)
     {
-        _mapping.Save(_mappingPath);
-        Log($"💾 已保存 {_mapping.Mappings.Count} 个按键映射到 {_mappingPath}");
-        SetStatus("映射已保存");
+        Log("⚠️ XInput 模式不支持自定义按键绑定");
     }
 
     private void ResetMapping_Click(object sender, RoutedEventArgs e)
     {
-        _mapping = new ControllerMapping();
-        _mapping.Save(_mappingPath);
-        Log("🔄 映射已重置，请重新绑定按键");
-        SetStatus("映射已重置");
+        Log("⚠️ XInput 模式不支持自定义按键绑定");
     }
 
     // ---- Manual Test ----
