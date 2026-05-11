@@ -213,7 +213,7 @@
                                 <!-- Raw HID Data -->
                                 <Border Background="{StaticResource BgMedium}" CornerRadius="6" Padding="8" Margin="0,0,0,8">
                                     <StackPanel>
-                                        <TextBlock Text="原始 HID 数据 (15字节)" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,4" />
+                                        <TextBlock Text="XInput 数据" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,4" />
                                         <TextBlock x:Name="RawHidText" Text="等待数据..." FontSize="12"
                                                    FontFamily="Consolas" TextWrapping="Wrap" />
                                         <TextBlock x:Name="RawChangesText" Text="" FontSize="11"
@@ -269,8 +269,9 @@
                                 </Border>
 
 
-                                <!-- Button Binding -->
-                                <Border Background="{StaticResource BgMedium}" CornerRadius="6" Padding="8" Margin="0,0,0,8">
+                                <!-- Button Binding (disabled in XInput mode) -->
+                                <Border Background="{StaticResource BgMedium}" CornerRadius="6" Padding="8" Margin="0,0,0,8"
+                                        Visibility="Collapsed">
                                     <StackPanel>
                                         <TextBlock Text="按键绑定" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,4" />
                                         <TextBlock x:Name="BindStatusText" Text="选择一个按键开始绑定" FontSize="11"

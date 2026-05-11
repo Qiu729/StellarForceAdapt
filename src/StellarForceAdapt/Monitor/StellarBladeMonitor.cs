@@ -45,7 +45,7 @@ public class StellarBladeMonitor : IDisposable
     }
 
     /// <summary>
-    /// Update game state based on XInput data (fallback when HID isn't available).
+    /// Update game state based on XInput data.
     /// XInput button flags: A=0x1000, B=0x2000, X=0x4000, Y=0x8000,
     /// LB=0x0100, RB=0x0200, L3=0x0040, R3=0x0080, Start=0x0010, Back=0x0020
     /// </summary>
@@ -199,7 +199,6 @@ public enum DetectionSource
 {
     Memory,
     XInput,
-    Hybrid,
 }
 
 public class GameState
