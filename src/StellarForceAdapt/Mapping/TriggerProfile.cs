@@ -119,6 +119,16 @@ public class TriggerCondition
 
     [JsonPropertyName("combo_min")]
     public int? ComboMin { get; set; } = null;
+
+    // CE-data conditions — require CE bridge to be connected
+    [JsonPropertyName("health_percent_max")]
+    public float? HealthPercentMax { get; set; } = null; // trigger when HP% <= this (e.g. 0.3 for low health)
+
+    [JsonPropertyName("beta_energy_min")]
+    public float? BetaEnergyMin { get; set; } = null; // trigger when BetaEnergy >= this
+
+    [JsonPropertyName("tachy_active")]
+    public bool? TachyActive { get; set; } = null; // trigger only when Tachy mode is on/off
 }
 
 public enum PlayerActionCondition
@@ -136,6 +146,7 @@ public enum PlayerActionCondition
     UsingSkill,
     Reloading,
     RunningAndShooting,
+    TachyMode,
 }
 
 /// <summary>

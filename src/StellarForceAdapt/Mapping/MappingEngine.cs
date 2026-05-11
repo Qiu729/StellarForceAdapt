@@ -201,6 +201,7 @@ public class MappingEngine : IDisposable
                 PlayerActionCondition.Blocking => state.PlayerAction == PlayerAction.Blocking,
                 PlayerActionCondition.Dodging => state.PlayerAction == PlayerAction.Dodging,
                 PlayerActionCondition.UsingSkill => state.PlayerAction == PlayerAction.UsingSkill,
+                PlayerActionCondition.TachyMode => state.TachyModeActive,
                 _ => false,
             };
             if (!matches) return false;
@@ -223,6 +224,22 @@ public class MappingEngine : IDisposable
 
         // Combo check
         if (condition.ComboMin.HasValue && state.ComboCount < condition.ComboMin.Value)
+            return false;
+
+        // CE-data conditions — only evaluate when CE data is available
+        if (condition.HealthPercentMax.HasValue &&
+            state.DetectionSource >= DetectionSource.CE &&
+            state.HealthPercent > condition.HealthPercentMax.Value)
+            return false;
+
+        if (condition.BetaEnergyMin.HasValue &&
+            state.DetectionSource >= DetectionSource.CE &&
+            state.BetaEnergy < condition.BetaEnergyMin.Value)
+            return false;
+
+        if (condition.TachyActive.HasValue &&
+            state.DetectionSource >= DetectionSource.CE &&
+            state.TachyModeActive != condition.TachyActive.Value)
             return false;
 
         return true;

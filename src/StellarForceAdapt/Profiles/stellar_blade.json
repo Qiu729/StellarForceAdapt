@@ -1,9 +1,86 @@
 {
-  "name": "Stellar Blade - 深度适配",
+  "name": "Stellar Blade - CE深度适配",
   "game": "Stellar Blade (剑星)",
-  "version": "1.1",
-  "description": "剑星 Stellar Blade 深度自适应扳机配置 — X/Y攻击, LB格挡, LT瞄准, RT射击",
+  "version": "1.2",
+  "description": "剑星自适应扳机 — 需要CE桥接。X/Y攻击, LB格挡, LT瞄准, RT射击, CE: HP/Beta/Tachy触发",
   "rules": [
+    {
+      "id": "tachy_mode_rt",
+      "name": "Tachy模式 - RT扳机锁",
+      "priority": 200,
+      "cooldown_ms": 1000,
+      "condition": {
+        "action": "tachy_mode",
+        "tachy_active": true
+      },
+      "effect": {
+        "type": "force_adapt",
+        "mode": "triggerlock",
+        "position": 50,
+        "intensity": 255,
+        "speed": 0,
+        "target": "right",
+        "duration_ms": 2000
+      }
+    },
+    {
+      "id": "low_health_lt",
+      "name": "低血量 - LT阻尼",
+      "priority": 180,
+      "cooldown_ms": 2000,
+      "condition": {
+        "action": "any",
+        "in_combat": true,
+        "health_percent_max": 0.3
+      },
+      "effect": {
+        "type": "force_adapt",
+        "mode": "racing",
+        "position": 30,
+        "intensity": 220,
+        "speed": 100,
+        "target": "left",
+        "duration_ms": 3000
+      }
+    },
+    {
+      "id": "beta_skill_rt",
+      "name": "Beta技能就绪 - RT狙击突破",
+      "priority": 170,
+      "cooldown_ms": 500,
+      "condition": {
+        "action": "aiming",
+        "beta_energy_min": 100
+      },
+      "effect": {
+        "type": "force_adapt",
+        "mode": "sniper",
+        "position": 60,
+        "intensity": 255,
+        "speed": 180,
+        "target": "right",
+        "duration_ms": 800
+      }
+    },
+    {
+      "id": "tachy_lt_racing",
+      "name": "Tachy模式 - LT赛车阻尼",
+      "priority": 160,
+      "cooldown_ms": 1000,
+      "condition": {
+        "action": "tachy_mode",
+        "tachy_active": true
+      },
+      "effect": {
+        "type": "force_adapt",
+        "mode": "racing",
+        "position": 20,
+        "intensity": 200,
+        "speed": 80,
+        "target": "left",
+        "duration_ms": 2000
+      }
+    },
     {
       "id": "gunfire_heavy",
       "name": "射击 - 后坐力",
