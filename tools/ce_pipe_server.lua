@@ -12,8 +12,8 @@
 
 local INTERVAL_MS = 5
 
--- Use Public user directory — writable, no Unicode issues on Chinese Windows
-local dir = "C:\\Users\\Public\\StellarForceAdapt"
+-- Use ProgramData — locale-independent, survives non-C-drive installs
+local dir = os.getenv("ProgramData") .. "\\StellarForceAdapt"
 local STATE_FILE = dir .. "\\ce_state.bin"
 
 os.execute('mkdir "' .. dir .. '" 2>nul')

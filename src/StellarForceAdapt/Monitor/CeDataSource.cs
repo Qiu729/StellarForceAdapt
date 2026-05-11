@@ -25,9 +25,10 @@ public class CeDataSource : IDisposable
 
     public CeDataSource()
     {
-        // Match CE Lua path: C:\Users\Public\StellarForceAdapt\ce_state.bin
-        // Hardcoded to avoid Unicode encoding issues on Chinese Windows
-        var dir = @"C:\Users\Public\StellarForceAdapt";
+        // Use %ProgramData% for locale-independent, non-C-drive-safe path
+        var dir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            "StellarForceAdapt");
         Directory.CreateDirectory(dir);
         _stateFile = Path.Combine(dir, "ce_state.bin");
     }

@@ -15,8 +15,6 @@ public class StellarBladeMonitor : IDisposable
     private nint _processHandle;
     private readonly CeDataSource _ceSource = new();
     private readonly object _stateLock = new();
-    private bool _ceActive;
-
     // Possible process names for Stellar Blade
     private static readonly string[] s_processNames =
         ["StellarBlade", "StellarBlade-Win64-Shipping", "SB"];
@@ -56,7 +54,6 @@ public class StellarBladeMonitor : IDisposable
 
     private void OnCeStateReceived(object? sender, CeGameState ce)
     {
-        _ceActive = true;
         lock (_stateLock)
         {
             var state = CurrentState;
@@ -88,7 +85,7 @@ public class StellarBladeMonitor : IDisposable
             state.Timestamp = DateTime.UtcNow;
 
             // Only downgrade source if CE isn't connected
-            if (!_ceActive || !_ceSource.IsConnected)
+            if (!_ceSource.IsConnected)
             {
                 state.DetectionSource = DetectionSource.XInput;
                 state.Health = 0;
