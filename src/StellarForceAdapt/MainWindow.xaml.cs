@@ -329,6 +329,10 @@ public partial class MainWindow : Window
         var devices = FlyDigiDevice.ScanDevices();
         if (devices.Length > 0)
         {
+            // Log all detected FlyDigi HID interfaces for diagnostics
+            foreach (var d in devices)
+                Log($"📡 HID接口: {d.ProductName} PID=0x{d.ProductId:X4} OutLen={d.OutputReportLength} InLen={d.InputReportLength}");
+
             var known = devices.FirstOrDefault(d => d.IsKnown);
             if (known != null)
             {
@@ -342,7 +346,7 @@ public partial class MainWindow : Window
             bool cd2Ok = _device.Connect();
 
             if (cd2Ok)
-                Log("✅ 手柄连接成功 (CD2)");
+                Log($"✅ 手柄连接成功 (PID=0x{_device.ProductId:X4}, OutLen={_device.OutputReportLength})");
             else
                 Log("⚠️ 手柄连接失败，请确认已通过 USB 连接");
         }
