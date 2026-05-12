@@ -27,6 +27,7 @@ public class FlyDigiDevice : IDisposable
     public bool IsConnected => _stream?.CanWrite == true;
     public string? DeviceName => _device?.GetFriendlyName();
     public int? ProductId => _device?.ProductID;
+    public int OutputReportLength => _device?.GetMaxOutputReportLength() ?? 0;
 
     /// <summary>
     /// True when the connected HID interface supports standard output reports
@@ -351,6 +352,8 @@ public class FlyDigiDevice : IDisposable
                 VendorId = d.VendorID,
                 ProductName = d.GetFriendlyName() ?? d.GetProductName() ?? "Unknown",
                 IsKnown = ForceAdaptProtocol.KnownProductIds.Contains(d.ProductID),
+                OutputReportLength = d.GetMaxOutputReportLength(),
+                InputReportLength = d.GetMaxInputReportLength(),
             })
             .ToArray();
     }
@@ -365,27 +368,54 @@ public class FlyDigiDevice : IDisposable
 
     /// <summary>
     /// Find the FlyDigi HID interface that supports output commands.
-    /// Priority: CD2 interface (0x6001) — works alongside SpaceStationService.
+    /// Priority: gamepad interface (0x2501, 32-byte vendor) for ForceAdapt —
+    /// CD2 (0x6001, 65-byte) is a wireless passthrough that may not forward
+    /// ForceAdapt commands when the charging dock is connected.
+    /// Falls back to CD2 if no gamepad interface is available.
     /// </summary>
     private static HidDevice? FindFlyDigiDevice()
     {
-        var devices = DeviceList.Local
+        var allDevices = DeviceList.Local
             .GetHidDevices()
             .Where(d => d.VendorID == ForceAdaptProtocol.VendorId)
-            .OrderByDescending(d => Array.IndexOf(ForceAdaptProtocol.KnownProductIds, d.ProductID))
             .ToArray();
 
-        var cd2 = devices.FirstOrDefault(d => d.ProductID == 0x6001);
-        if (cd2 != null) return cd2;
-
-        var wiredConfig = devices.FirstOrDefault(d => d.GetMaxOutputReportLength() == 32);
-        if (wiredConfig != null) return wiredConfig;
-
-        return devices.FirstOrDefault(d =>
+        // Prefer known gamepad interfaces (small output reports, direct path to controller)
+        var gamepad = allDevices
+            .Where(d => ForceAdaptProtocol.KnownProductIds.Contains(d.ProductID)
+                        && d.GetMaxOutputReportLength() <= 32)
+            .OrderByDescending(d => Array.IndexOf(ForceAdaptProtocol.KnownProductIds, d.ProductID))
+            .FirstOrDefault();
+        if (gamepad != null)
         {
-            int len = d.GetMaxOutputReportLength();
-            return len >= 32;
-        }) ?? devices.FirstOrDefault();
+            Log?.Invoke($"[HID] 选择游戏手柄接口 PID=0x{gamepad.ProductID:X4} OutLen={gamepad.GetMaxOutputReportLength()}");
+            return gamepad;
+        }
+
+        // Fallback: any known device (regardless of report length)
+        var known = allDevices
+            .Where(d => ForceAdaptProtocol.KnownProductIds.Contains(d.ProductID))
+            .OrderByDescending(d => Array.IndexOf(ForceAdaptProtocol.KnownProductIds, d.ProductID))
+            .FirstOrDefault();
+        if (known != null)
+        {
+            Log?.Invoke($"[HID] 选择已知设备接口 PID=0x{known.ProductID:X4} OutLen={known.GetMaxOutputReportLength()}");
+            return known;
+        }
+
+        // Last resort: CD2 or any device with output capability
+        var cd2 = allDevices.FirstOrDefault(d => d.ProductID == 0x6001);
+        if (cd2 != null)
+        {
+            Log?.Invoke($"[HID] 回退到 CD2 接口 PID=0x{cd2.ProductID:X4} OutLen={cd2.GetMaxOutputReportLength()}");
+            return cd2;
+        }
+
+        var any = allDevices.FirstOrDefault(d => d.GetMaxOutputReportLength() >= 32)
+                  ?? allDevices.FirstOrDefault();
+        if (any != null)
+            Log?.Invoke($"[HID] 回退到通用接口 PID=0x{any.ProductID:X4} OutLen={any.GetMaxOutputReportLength()}");
+        return any;
     }
 
     // APPROACH C: set to true to disable CD2 input reads entirely.
@@ -458,4 +488,6 @@ public class FlyDigiDeviceInfo
     public int VendorId { get; set; }
     public string ProductName { get; set; } = "";
     public bool IsKnown { get; set; }
+    public int OutputReportLength { get; set; }
+    public int InputReportLength { get; set; }
 }
