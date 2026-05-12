@@ -1,43 +1,106 @@
 # StellarForceAdapt
 
-飞智八爪鱼5 (FlyDigi APEX5) ForceAdapt 扳机力反馈适配引擎。
+飞智 (FlyDigi) 手柄 ForceAdapt 自适应扳机通用适配器。
 
-通过逆向 SpaceStation 私有 HID 协议，实现 XInput 输入捕获 → 游戏状态监测 → 动作识别 → 扳机力反馈的实时闭环控制。
+通过 USB HID 直连飞智手柄，下发 ForceAdapt 命令实现 6 种扳机力反馈模式。JSON 配置文件驱动，基于 XInput 输入实时响应。
 
 ## 功能
 
-- **ForceAdapt V2 协议**：左右扳机独立控制，6 种力反馈模式（Off / Racing / Machinegun / Sniper / TriggerLock / Vibration）
-- **XInput 全输入捕获**：双扳机位置 + 按键 + 摇杆，~200Hz 轮询，支持 Xbox / FlyDigi 等 XInput 兼容手柄
-- **Cheat Engine 桥接**：通过 CE Lua 脚本读取游戏内存（HP、Beta、Burst、Tachy 能量值），写入二进制文件由 C# 端实时轮询
-- **JSON 配置驱动**：触发规则优先级排序、冷却时间、条件组合，无需重新编译即可调整策略
-- **游戏进程自动检测**：后台监控目标进程启动/退出，自动启停引擎
+- **6 种力反馈模式**：Off / Racing / Machinegun / Sniper / TriggerLock / Vibration
+- **XInput 输入捕获**：双扳机 + 按键 + 摇杆，~250Hz 轮询
+- **JSON 配置驱动**：优先级排序、冷却时间、条件组合
+- **左右扳机独立控制**：各自独立的模式和状态追踪
+- **自动重连**：手柄断开后自动重试连接
 
 ## 支持手柄
 
-- 飞智八爪鱼5 (APEX 5, PID 0x2501)
-- 飞智 Vader 4 Pro (PID 0x2012)
-- 飞智 APEX 4 (PID 0x2021/0x2023)
-- 飞智 Vader 3 Pro (PID 0x2011)
+| 型号 | PID |
+|------|-----|
+| 飞智八爪鱼5 (APEX 5) | 0x2501 |
+| 飞智 Vader 4 Pro | 0x2012 |
+| 飞智 APEX 4 | 0x2021 / 0x2023 |
+| 飞智 Vader 3 Pro | 0x2011 |
+| 飞智 Vader 3 | 0x2010 |
 
-## Cheat Engine 桥接（Stellar Blade / 剑星）
+## 快速开始
 
-项目包含 Cheat Engine 桥接，可将游戏内存数据（生命值、能量槽）实时传入自适应扳机引擎。
+1. 下载 [Releases](../../releases) 中的最新版本
+2. 解压到任意目录
+3. 通过 USB 连接飞智手柄
+4. 运行 `StellarForceAdapt.exe`
+5. 选择配置文件，点击"启动引擎"
 
-### 环境要求
+## 配置文件
 
-- **Cheat Engine 7.5+**：[https://www.cheatengine.org/](https://www.cheatengine.org/)
-- **NidasBot 的 Stellar Blade CT 表**（需开启 `[Player Pointers]`）
-- 游戏进程：`SB-Win64-Shipping.exe`（无 Anti-Cheat）
+扳机效果规则位于 `Profiles/` 目录，JSON 格式：
 
-### 使用步骤
+```jsonc
+{
+  "name": "示例配置",
+  "version": "1.0",
+  "description": "RT按下时机枪反馈",
+  "rules": [
+    {
+      "id": "rt_mg",
+      "name": "RT 机枪反馈",
+      "priority": 100,          // 优先级（数值越大越优先）
+      "cooldown_ms": 0,         // 冷却时间（毫秒）
+      "condition": {
+        "buttons": 0,              // XInput 按键掩码（必须全部按下，0=不检查）
+        "buttons_any": 0,          // 任意一个按下即触发（0=不检查）
+        "left_trigger_min": 0,     // LT 下限 (0-255)
+        "left_trigger_max": 255,   // LT 上限
+        "right_trigger_min": 30,   // RT 下限
+        "right_trigger_max": 255,  // RT 上限
+        "left_stick_magnitude_min": 0,  // 左摇杆幅度下限 (0-32768)
+        "right_stick_magnitude_min": 0  // 右摇杆幅度下限
+      },
+      "effect": {
+        "type": "force_adapt",
+        "mode": "machinegun",     // off / racing / machinegun / sniper / triggerlock / vibrate
+        "target": "right",        // left / right / both
+        "duration_ms": 0,         // 持续时间（0=持续）
+        "intensity": 220,         // 力度 (0-255)
+        "speed": 100              // 速度 (0-255)
+      }
+    }
+  ]
+}
+```
 
-1. 启动游戏，进入实际操控角色（指针链仅在玩家角色加载后解析）
-2. 打开 Cheat Engine，附加 `SB-Win64-Shipping.exe`
-3. 加载 NidasBot 的 CT 表，勾选 **[Player Pointers]** 使其激活
-4. `Ctrl+Alt+L` 打开 CE Lua 脚本窗口，粘贴 `tools/ce_pipe_server.lua` → 执行
-5. 启动 `StellarForceAdapt.exe`，引擎将自动检测 CE 数据并生效
+### 条件字段说明
 
-CE 状态数据写入 `%ProgramData%\StellarForceAdapt\ce_state.bin`，C# 端以 5ms 间隔轮询，基于递增时间戳判断数据新鲜度。
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `buttons` | ushort | XInput 按键掩码，**全部按下**才触发。0=不检查 |
+| `buttons_any` | ushort | XInput 按键掩码，**任意按下**即触发。0=不检查 |
+| `left_trigger_min` | byte | 左扳机最小行程 (0-255) |
+| `left_trigger_max` | byte | 左扳机最大行程 (0-255) |
+| `right_trigger_min` | byte | 右扳机最小行程 (0-255) |
+| `right_trigger_max` | byte | 右扳机最大行程 (0-255) |
+| `left_stick_magnitude_min` | short | 左摇杆矢量幅度下限 (0-32768) |
+| `right_stick_magnitude_min` | short | 右摇杆矢量幅度下限 (0-32768) |
+
+### 效果类型
+
+| type | 说明 |
+|------|------|
+| `force_adapt` | ForceAdapt 扳机力反馈（需要 mode 字段） |
+| `rumble` | 扳机震动马达（需要 intensity 字段） |
+| `sequence` | 时序效果序列（需要 sequence 数组） |
+
+### XInput 按键掩码参考
+
+| 按键 | 掩码 | | 按键 | 掩码 |
+|------|------|-|------|------|
+| A | 0x1000 | | LB | 0x0100 |
+| B | 0x2000 | | RB | 0x0200 |
+| X | 0x4000 | | Start | 0x0010 |
+| Y | 0x8000 | | Back | 0x0020 |
+| D-Pad Up | 0x0001 | | L3 | 0x0040 |
+| D-Pad Down | 0x0002 | | R3 | 0x0080 |
+| D-Pad Left | 0x0004 | | | |
+| D-Pad Right | 0x0008 | | | |
 
 ## 构建
 
@@ -45,45 +108,14 @@ CE 状态数据写入 `%ProgramData%\StellarForceAdapt\ce_state.bin`，C# 端以
 dotnet build src/StellarForceAdapt/StellarForceAdapt.csproj
 ```
 
-目标框架：.NET 9.0 Windows (WPF)，依赖 `Microsoft.XInput.winmd`（Windows SDK）。
+要求：
+- .NET 9.0 SDK
+- Windows 10+ (XInput 依赖 `xinput1_4.dll`)
 
-## 配置文件
+## 协议
 
-扳机效果规则位于 `src/StellarForceAdapt/Profiles/`，JSON 格式：
+基于 SpaceStation 私有 HID 协议逆向。ForceAdapt 协议通过 Report ID 0x03 + Magic 0x5AA5 下发 V2 命令序列。
 
-```jsonc
-{
-  "id": "low_health_lt",           // 唯一规则 ID
-  "name": "低血量 - LT阻尼",
-  "priority": 180,                  // 优先级（数值越大越优先）
-  "cooldown_ms": 2000,             // 冷却时间
-  "condition": {
-    "action": "any",               // 触发动作（melee_attack / aiming / shooting / blocking …）
-    "in_combat": true,             // 战斗状态过滤
-    "health_percent_max": 0.3      // CE 数据条件：HP < 30%
-  },
-  "effect": {
-    "type": "force_adapt",         // force_adapt / rumble / sequence
-    "mode": "racing",              // 力反馈模式（off / racing / machinegun / sniper / triggerlock / vibrate）
-    "position": 30,
-    "intensity": 220,
-    "speed": 100,
-    "target": "left",             // left / right / both
-    "duration_ms": 3000
-  }
-}
-```
+## License
 
-## 协议逆向
-
-详见 `USBPcap捕获结果.txt`，包含 SpaceStation 官方软件的完整 USB 通信抓包。
-
-ForceAdapt 协议格式（Report ID 0x03）：
-
-| Offset | Size | 内容 |
-|--------|------|------|
-| 0x00 | 1 | Report ID (0x03) |
-| 0x01 | 2 | Magic (0x5AA5, little-endian) |
-| 0x03 | 1 | 触发侧 (1=LT, 2=RT, 3=Both) |
-| 0x04 | 1 | 模式 (0=Off, 1=Racing, 2=Machinegun, 3=Sniper, 4=TriggerLock, 5=Vibration) |
-| 0x05 | 4 | 参数 (position/intensity/speed 等，模式相关) |
+MIT
