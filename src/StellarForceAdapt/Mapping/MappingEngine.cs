@@ -328,7 +328,8 @@ public class MappingEngine : IDisposable
                             _rtExpiry = expiry;
                         return false;
                     }
-                    _device.ApplyTriggerEffect(side.Value, mode);
+                    var (ok, details) = _device.ApplyTriggerEffect(side.Value, mode);
+                    FlyDigiDevice.Log?.Invoke($"🔧 引擎发送 [{side.Value} {mode}]: {(ok ? "OK" : "FAIL")} {details}");
                     if (side.Value == ForceAdaptProtocol.TriggerSide.LT)
                     { _activeLtMode = mode; _ltExpiry = expiry; }
                     else
@@ -342,7 +343,8 @@ public class MappingEngine : IDisposable
                         _rtExpiry = expiry;
                         return false;
                     }
-                    _device.ApplyTriggerEffectBoth(mode);
+                    var (ok, details) = _device.ApplyTriggerEffectBoth(mode);
+                    FlyDigiDevice.Log?.Invoke($"🔧 引擎发送 [Both {mode}]: {(ok ? "OK" : "FAIL")} {details}");
                     _activeLtMode = mode; _ltExpiry = expiry;
                     _activeRtMode = mode; _rtExpiry = expiry;
                 }
