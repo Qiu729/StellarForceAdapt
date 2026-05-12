@@ -380,10 +380,11 @@ public class FlyDigiDevice : IDisposable
             .Where(d => d.VendorID == ForceAdaptProtocol.VendorId)
             .ToArray();
 
-        // Prefer known gamepad interfaces (small output reports, direct path to controller)
+        // Prefer known gamepad interfaces with 32-byte output (direct path to controller).
+        // Must require OutLen > 0 — some PID=0x2501 interfaces are input-only (OutLen=0).
         var gamepad = allDevices
             .Where(d => ForceAdaptProtocol.KnownProductIds.Contains(d.ProductID)
-                        && d.GetMaxOutputReportLength() <= 32)
+                        && d.GetMaxOutputReportLength() is > 0 and <= 32)
             .OrderByDescending(d => Array.IndexOf(ForceAdaptProtocol.KnownProductIds, d.ProductID))
             .FirstOrDefault();
         if (gamepad != null)
