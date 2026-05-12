@@ -99,6 +99,12 @@
         <Setter Property="Padding" Value="8,4" />
     </Style>
 
+    <!-- ComboBoxItem: dark text on white dropdown background -->
+    <Style TargetType="ComboBoxItem">
+        <Setter Property="Foreground" Value="#1A1A1A" />
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+
     <Style TargetType="ListBox">
         <Setter Property="Background" Value="{StaticResource BgMedium}" />
         <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
