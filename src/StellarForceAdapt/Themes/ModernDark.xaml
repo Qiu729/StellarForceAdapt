@@ -77,82 +77,26 @@
     <!-- ===== TextBox ===== -->
     <Style TargetType="TextBox">
         <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
-        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+        <Setter Property="Foreground" Value="White" />
         <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="10,6" />
         <Setter Property="FontSize" Value="13" />
         <Setter Property="MinHeight" Value="28" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
-        <Setter Property="CaretBrush" Value="{StaticResource TextPrimaryBrush}" />
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="TextBox">
-                    <Border x:Name="Border"
-                            Background="{TemplateBinding Background}"
-                            BorderBrush="{TemplateBinding BorderBrush}"
-                            BorderThickness="{TemplateBinding BorderThickness}"
-                            CornerRadius="4">
-                        <ScrollViewer x:Name="PART_ContentHost"
-                                      Margin="{TemplateBinding Padding}"
-                                      VerticalAlignment="Center" />
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsFocused" Value="True">
-                            <Setter TargetName="Border" Property="BorderBrush" Value="{StaticResource Accent}" />
-                        </Trigger>
-                        <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Border" Property="BorderBrush" Value="{StaticResource TextSecondaryBrush}" />
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
+        <Setter Property="CaretBrush" Value="White" />
     </Style>
 
     <!-- ===== ComboBox ===== -->
     <Style TargetType="ComboBox">
         <Setter Property="Background" Value="{StaticResource SurfaceBrush}" />
-        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+        <Setter Property="Foreground" Value="White" />
         <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="Padding" Value="10,5" />
         <Setter Property="FontSize" Value="13" />
         <Setter Property="MinHeight" Value="28" />
         <Setter Property="VerticalContentAlignment" Value="Center" />
-        <Setter Property="ItemContainerStyle">
-            <Setter.Value>
-                <Style TargetType="ComboBoxItem">
-                    <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
-                    <Setter Property="Background" Value="Transparent" />
-                    <Setter Property="Padding" Value="10,5" />
-                    <Setter Property="FontSize" Value="13" />
-                    <Setter Property="Template">
-                        <Setter.Value>
-                            <ControlTemplate TargetType="ComboBoxItem">
-                                <Border x:Name="Border"
-                                        Background="{TemplateBinding Background}"
-                                        Padding="{TemplateBinding Padding}"
-                                        CornerRadius="2">
-                                    <ContentPresenter x:Name="Cp"
-                                                      TextElement.Foreground="{TemplateBinding Foreground}" />
-                                </Border>
-                                <ControlTemplate.Triggers>
-                                    <Trigger Property="IsHighlighted" Value="True">
-                                        <Setter TargetName="Border" Property="Background" Value="{StaticResource Accent}" />
-                                        <Setter TargetName="Cp" Property="TextElement.Foreground" Value="White" />
-                                    </Trigger>
-                                    <Trigger Property="IsSelected" Value="True">
-                                        <Setter TargetName="Border" Property="Background" Value="{StaticResource Accent}" />
-                                        <Setter TargetName="Cp" Property="TextElement.Foreground" Value="White" />
-                                    </Trigger>
-                                </ControlTemplate.Triggers>
-                            </ControlTemplate>
-                        </Setter.Value>
-                    </Setter>
-                </Style>
-            </Setter.Value>
-        </Setter>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="ComboBox">
@@ -162,7 +106,8 @@
                                       BorderBrush="{TemplateBinding BorderBrush}"
                                       BorderThickness="{TemplateBinding BorderThickness}"
                                       IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
-                                      ClickMode="Press">
+                                      ClickMode="Press"
+                                      Focusable="False">
                             <ToggleButton.Template>
                                 <ControlTemplate TargetType="ToggleButton">
                                     <Border x:Name="Border"
@@ -170,36 +115,27 @@
                                             BorderBrush="{TemplateBinding BorderBrush}"
                                             BorderThickness="{TemplateBinding BorderThickness}"
                                             CornerRadius="4">
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*" />
-                                                <ColumnDefinition Width="20" />
-                                            </Grid.ColumnDefinitions>
-                                            <ContentPresenter Grid.Column="0"
-                                                              Margin="10,5"
-                                                              HorizontalAlignment="Left"
-                                                              VerticalAlignment="Center"
-                                                              Content="{TemplateBinding ComboBox.SelectionBoxItem}"
-                                                              ContentTemplate="{TemplateBinding ComboBox.SelectionBoxItemTemplate}"
-                                                              ContentStringFormat="{TemplateBinding ComboBox.SelectionBoxItemStringFormat}" />
-                                            <Path Grid.Column="1"
-                                                  Data="M0,0 L4,4 L8,0"
-                                                  Stroke="{StaticResource TextSecondaryBrush}"
-                                                  StrokeThickness="1.5"
-                                                  Fill="Transparent"
-                                                  VerticalAlignment="Center"
-                                                  HorizontalAlignment="Center"
-                                                  Margin="0,0,6,0" />
-                                        </Grid>
+                                        <Path x:Name="Arrow"
+                                              Data="M0,0 L4,4 L8,0"
+                                              Stroke="{StaticResource TextSecondaryBrush}"
+                                              StrokeThickness="1.5"
+                                              Fill="Transparent"
+                                              VerticalAlignment="Center"
+                                              HorizontalAlignment="Right"
+                                              Margin="0,0,8,0" />
                                     </Border>
-                                    <ControlTemplate.Triggers>
-                                        <Trigger Property="IsMouseOver" Value="True">
-                                            <Setter TargetName="Border" Property="BorderBrush" Value="{StaticResource TextSecondaryBrush}" />
-                                        </Trigger>
-                                    </ControlTemplate.Triggers>
                                 </ControlTemplate>
                             </ToggleButton.Template>
                         </ToggleButton>
+
+                        <ContentPresenter Margin="10,0,28,0"
+                                          VerticalAlignment="Center"
+                                          HorizontalAlignment="Left"
+                                          IsHitTestVisible="False"
+                                          Content="{TemplateBinding SelectionBoxItem}"
+                                          ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                          ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}"
+                                          TextElement.Foreground="White" />
 
                         <Popup x:Name="Popup"
                                Placement="Bottom"
@@ -220,44 +156,16 @@
                             </Border>
                         </Popup>
                     </Grid>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsDropDownOpen" Value="True">
-                            <Setter TargetName="ToggleButton" Property="BorderBrush" Value="{StaticResource Accent}" />
-                        </Trigger>
-                    </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
     </Style>
 
-    <!-- ComboBoxItem: styled for dark dropdown -->
     <Style TargetType="ComboBoxItem">
-        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+        <Setter Property="Foreground" Value="White" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="Padding" Value="10,5" />
         <Setter Property="FontSize" Value="13" />
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="ComboBoxItem">
-                    <Border x:Name="Border"
-                            Background="{TemplateBinding Background}"
-                            Padding="{TemplateBinding Padding}"
-                            CornerRadius="2">
-                        <ContentPresenter />
-                    </Border>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsHighlighted" Value="True">
-                            <Setter TargetName="Border" Property="Background" Value="{StaticResource Accent}" />
-                            <Setter Property="Foreground" Value="White" />
-                        </Trigger>
-                        <Trigger Property="IsSelected" Value="True">
-                            <Setter TargetName="Border" Property="Background" Value="{StaticResource Accent}" />
-                            <Setter Property="Foreground" Value="White" />
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
     </Style>
 
     <!-- ===== CheckBox ===== -->
@@ -362,7 +270,7 @@
                             Background="{TemplateBinding Background}"
                             Padding="{TemplateBinding Padding}"
                             CornerRadius="2">
-                        <ContentPresenter />
+                        <ContentPresenter TextElement.Foreground="{StaticResource TextPrimaryBrush}" />
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsSelected" Value="True">
