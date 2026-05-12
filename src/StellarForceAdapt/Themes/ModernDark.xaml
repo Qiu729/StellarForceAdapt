@@ -134,16 +134,17 @@
                                         Background="{TemplateBinding Background}"
                                         Padding="{TemplateBinding Padding}"
                                         CornerRadius="2">
-                                    <ContentPresenter />
+                                    <ContentPresenter x:Name="Cp"
+                                                      TextElement.Foreground="{TemplateBinding Foreground}" />
                                 </Border>
                                 <ControlTemplate.Triggers>
                                     <Trigger Property="IsHighlighted" Value="True">
                                         <Setter TargetName="Border" Property="Background" Value="{StaticResource Accent}" />
-                                        <Setter Property="Foreground" Value="White" />
+                                        <Setter TargetName="Cp" Property="TextElement.Foreground" Value="White" />
                                     </Trigger>
                                     <Trigger Property="IsSelected" Value="True">
                                         <Setter TargetName="Border" Property="Background" Value="{StaticResource Accent}" />
-                                        <Setter Property="Foreground" Value="White" />
+                                        <Setter TargetName="Cp" Property="TextElement.Foreground" Value="White" />
                                     </Trigger>
                                 </ControlTemplate.Triggers>
                             </ControlTemplate>
@@ -203,7 +204,7 @@
                         <Popup x:Name="Popup"
                                Placement="Bottom"
                                IsOpen="{TemplateBinding IsDropDownOpen}"
-                               AllowsTransparency="False"
+                               AllowsTransparency="True"
                                Focusable="False"
                                PopupAnimation="Slide">
                             <Border x:Name="DropDownBorder"
