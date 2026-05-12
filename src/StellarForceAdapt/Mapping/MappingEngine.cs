@@ -4,22 +4,15 @@ using StellarForceAdapt.Monitor;
 
 namespace StellarForceAdapt.Mapping;
 
-/// <summary>
-/// Core engine: monitors game state, evaluates profiles, sends trigger commands.
-/// </summary>
 public class MappingEngine : IDisposable
 {
     private readonly FlyDigiDevice _device;
-    private readonly StellarBladeMonitor _gameMonitor;
     private readonly CancellationTokenSource _cts = new();
 
     private Thread? _engineThread;
     private List<RuleState> _activeRules = [];
     private bool _running;
 
-    // ForceAdapt effect tracking — per-side to prevent LT/RT from overwriting each other.
-    // Each side independently tracks its active mode and expiry so the loop can cleanly
-    // revert to Off when the duration elapses.
     private ForceAdaptProtocol.ForceAdaptMode? _activeLtMode;
     private ForceAdaptProtocol.ForceAdaptMode? _activeRtMode;
     private DateTime _ltExpiry = DateTime.MinValue;
@@ -27,23 +20,16 @@ public class MappingEngine : IDisposable
 
     private readonly XInputWatcher _xinput = new();
 
-
     public TriggerProfile? CurrentProfile { get; private set; }
     public bool IsRunning => _running;
     public XInputState CurrentInput => _xinput.CurrentState;
-    public GameState CurrentGameState => _gameMonitor.CurrentState;
 
     public event EventHandler<string>? StatusChanged;
-    public event EventHandler<GameState>? GameStateUpdate;
     public event EventHandler<string>? EffectTriggered;
 
-    public MappingEngine(FlyDigiDevice device, StellarBladeMonitor gameMonitor)
+    public MappingEngine(FlyDigiDevice device)
     {
         _device = device;
-        _gameMonitor = gameMonitor;
-
-        _gameMonitor.GameStateChanged += OnGameStateChanged;
-        _gameMonitor.GameProcessChanged += OnGameProcessChanged;
         _xinput.StateChanged += OnXInputStateChanged;
     }
 
@@ -54,7 +40,7 @@ public class MappingEngine : IDisposable
             .OrderByDescending(r => r.Priority)
             .Select(r => new RuleState { Rule = r })
             .ToList();
-        StatusChanged?.Invoke(this, $"Profile loaded: {profile.Name} ({profile.Game})");
+        StatusChanged?.Invoke(this, $"Profile loaded: {profile.Name}");
     }
 
     public void Start()
@@ -63,7 +49,6 @@ public class MappingEngine : IDisposable
         _running = true;
 
         _xinput.Start(4);
-        _gameMonitor.Start();
 
         _engineThread = new Thread(EngineLoop)
         {
@@ -72,7 +57,6 @@ public class MappingEngine : IDisposable
         };
         _engineThread.Start();
 
-        StatusChanged?.Invoke(this, "XInput 输入已启用");
         StatusChanged?.Invoke(this, "Engine started");
         Debug.WriteLine("[Engine] Started");
     }
@@ -81,7 +65,6 @@ public class MappingEngine : IDisposable
     {
         _running = false;
         _xinput.Stop();
-        _gameMonitor.Stop();
 
         _device.ResetTriggers();
         _activeLtMode = null;
@@ -96,8 +79,6 @@ public class MappingEngine : IDisposable
         Stop();
         _cts.Cancel();
         _cts.Dispose();
-        _gameMonitor.GameStateChanged -= OnGameStateChanged;
-        _gameMonitor.GameProcessChanged -= OnGameProcessChanged;
         _xinput.StateChanged -= OnXInputStateChanged;
         _xinput.Dispose();
     }
@@ -109,10 +90,8 @@ public class MappingEngine : IDisposable
             try
             {
                 if (CurrentProfile != null && _device.IsConnected)
-                {
                     EvaluateRules();
-                }
-                Thread.Sleep(5); // ~200Hz evaluation loop
+                Thread.Sleep(5);
             }
             catch (Exception ex)
             {
@@ -124,26 +103,9 @@ public class MappingEngine : IDisposable
 
     private void EvaluateRules()
     {
-        var gameState = _gameMonitor.CurrentState;
+        var xstate = _xinput.CurrentState;
+        if (!xstate.Connected) return;
 
-        // When game exits, immediately turn off all active effects.
-        if (!gameState.IsRunning)
-        {
-            if (_activeLtMode != null)
-            {
-                _device.ApplyTriggerEffect(ForceAdaptProtocol.TriggerSide.LT, ForceAdaptProtocol.ForceAdaptMode.Off);
-                _activeLtMode = null;
-            }
-            if (_activeRtMode != null)
-            {
-                _device.ApplyTriggerEffect(ForceAdaptProtocol.TriggerSide.RT, ForceAdaptProtocol.ForceAdaptMode.Off);
-                _activeRtMode = null;
-            }
-            return;
-        }
-
-        // Safety net: expiry-based fallback (only fires when duration_ms > 0 and
-        // ApplyEffect dedup hasn't refreshed it in time).
         if (_activeLtMode != null && DateTime.UtcNow >= _ltExpiry)
         {
             _device.ApplyTriggerEffect(ForceAdaptProtocol.TriggerSide.LT, ForceAdaptProtocol.ForceAdaptMode.Off);
@@ -155,11 +117,9 @@ public class MappingEngine : IDisposable
             _activeRtMode = null;
         }
 
-        // Evaluate each trigger side independently.
-        var bestLt = FindBestRule(gameState, ForceAdaptProtocol.TriggerSide.LT);
-        var bestRt = FindBestRule(gameState, ForceAdaptProtocol.TriggerSide.RT);
+        var bestLt = FindBestRule(xstate, ForceAdaptProtocol.TriggerSide.LT);
+        var bestRt = FindBestRule(xstate, ForceAdaptProtocol.TriggerSide.RT);
 
-        // Primary turn-off: when a rule stops matching, revert the trigger to neutral.
         if (bestLt == null && _activeLtMode != null)
         {
             _device.ApplyTriggerEffect(ForceAdaptProtocol.TriggerSide.LT, ForceAdaptProtocol.ForceAdaptMode.Off);
@@ -171,9 +131,6 @@ public class MappingEngine : IDisposable
             _activeRtMode = null;
         }
 
-        // RT applied first so its state is correctly set before LT's sequence runs.
-        // MarkRuleTriggered only fires on actual HID application (not dedup refresh),
-        // so cooldown_ms works correctly for one-shot effects.
         if (bestRt != null)
         {
             if (ApplyEffect(bestRt.Effect))
@@ -186,7 +143,7 @@ public class MappingEngine : IDisposable
         }
     }
 
-    private MappingRule? FindBestRule(GameState gameState, ForceAdaptProtocol.TriggerSide side)
+    private MappingRule? FindBestRule(XInputState xstate, ForceAdaptProtocol.TriggerSide side)
     {
         MappingRule? bestRule = null;
         int bestPriority = int.MinValue;
@@ -194,7 +151,7 @@ public class MappingEngine : IDisposable
         foreach (var ruleState in _activeRules)
         {
             if (!ruleState.CanTrigger()) continue;
-            if (!EvaluateCondition(ruleState.Rule.Condition, gameState)) continue;
+            if (!EvaluateCondition(ruleState.Rule.Condition, xstate)) continue;
 
             var target = ruleState.Rule.Effect.Target;
             bool matchesSide = target == TriggerTarget.Both
@@ -219,63 +176,31 @@ public class MappingEngine : IDisposable
         EffectTriggered?.Invoke(this, rule.Name);
     }
 
-    private bool EvaluateCondition(TriggerCondition condition, GameState state)
+    private static bool EvaluateCondition(TriggerCondition cond, XInputState state)
     {
-        // Action check
-        if (condition.Action != PlayerActionCondition.Any)
+        if (cond.Buttons != 0 && (state.Buttons & cond.Buttons) != cond.Buttons)
+            return false;
+
+        if (cond.ButtonsAny != 0 && (state.Buttons & cond.ButtonsAny) == 0)
+            return false;
+
+        if (state.LeftTrigger < cond.LeftTriggerMin || state.LeftTrigger > cond.LeftTriggerMax)
+            return false;
+
+        if (state.RightTrigger < cond.RightTriggerMin || state.RightTrigger > cond.RightTriggerMax)
+            return false;
+
+        if (cond.LeftStickMagnitudeMin > 0)
         {
-            var matches = condition.Action switch
-            {
-                PlayerActionCondition.Idle => state.PlayerAction == PlayerAction.Idle,
-                PlayerActionCondition.Moving => state.PlayerAction == PlayerAction.Walking,
-                PlayerActionCondition.Sprinting => state.PlayerAction == PlayerAction.Sprinting,
-                PlayerActionCondition.MeleeAttack => state.PlayerAction == PlayerAction.MeleeAttack,
-                PlayerActionCondition.Shooting => state.PlayerAction == PlayerAction.ShootingWeapon,
-                PlayerActionCondition.Aiming => state.PlayerAction == PlayerAction.Aiming,
-                PlayerActionCondition.AimingAndShooting => state.PlayerAction == PlayerAction.AimingAndShooting,
-                PlayerActionCondition.Blocking => state.PlayerAction == PlayerAction.Blocking,
-                PlayerActionCondition.Dodging => state.PlayerAction == PlayerAction.Dodging,
-                PlayerActionCondition.UsingSkill => state.PlayerAction == PlayerAction.UsingSkill,
-                PlayerActionCondition.TachyMode => state.TachyModeActive,
-                _ => false,
-            };
-            if (!matches) return false;
+            double mag = Math.Sqrt((long)state.LeftThumbX * state.LeftThumbX + (long)state.LeftThumbY * state.LeftThumbY);
+            if (mag < cond.LeftStickMagnitudeMin) return false;
         }
 
-        // Combat state check
-        if (condition.InCombat.HasValue && state.InCombat != condition.InCombat.Value)
-            return false;
-
-        // Trigger position checks
-        if (condition.TriggerMin.HasValue &&
-            (state.RightTriggerPosition < condition.TriggerMin.Value &&
-             state.LeftTriggerPosition < condition.TriggerMin.Value))
-            return false;
-
-        if (condition.TriggerMax.HasValue &&
-            (state.RightTriggerPosition > condition.TriggerMax.Value &&
-             state.LeftTriggerPosition > condition.TriggerMax.Value))
-            return false;
-
-        // Combo check
-        if (condition.ComboMin.HasValue && state.ComboCount < condition.ComboMin.Value)
-            return false;
-
-        // CE-data conditions — only evaluate when CE data is available
-        if (condition.HealthPercentMax.HasValue &&
-            state.DetectionSource >= DetectionSource.CE &&
-            state.HealthPercent > condition.HealthPercentMax.Value)
-            return false;
-
-        if (condition.BetaEnergyMin.HasValue &&
-            state.DetectionSource >= DetectionSource.CE &&
-            state.BetaEnergy < condition.BetaEnergyMin.Value)
-            return false;
-
-        if (condition.TachyActive.HasValue &&
-            state.DetectionSource >= DetectionSource.CE &&
-            state.TachyModeActive != condition.TachyActive.Value)
-            return false;
+        if (cond.RightStickMagnitudeMin > 0)
+        {
+            double mag = Math.Sqrt((long)state.RightThumbX * state.RightThumbX + (long)state.RightThumbY * state.RightThumbY);
+            if (mag < cond.RightStickMagnitudeMin) return false;
+        }
 
         return true;
     }
@@ -291,31 +216,25 @@ public class MappingEngine : IDisposable
                 var mode = effect.Mode?.Trim().ToLowerInvariant() switch
                 {
                     "off" or "none" or "clear" => ForceAdaptProtocol.ForceAdaptMode.Off,
-                    "racing" or "pushback" or "damp" or "damping"
-                                               => ForceAdaptProtocol.ForceAdaptMode.Racing,
-                    "machinegun" or "burst" or "mg"
-                                               => ForceAdaptProtocol.ForceAdaptMode.Machinegun,
+                    "racing" or "pushback" or "damp" or "damping" => ForceAdaptProtocol.ForceAdaptMode.Racing,
+                    "machinegun" or "burst" or "mg" => ForceAdaptProtocol.ForceAdaptMode.Machinegun,
                     "sniper" or "breakthrough" => ForceAdaptProtocol.ForceAdaptMode.Sniper,
-                    "lock" or "triggerlock" or "resistance"
-                                               => ForceAdaptProtocol.ForceAdaptMode.TriggerLock,
-                    "vibrate" or "vibration" or "haptic"
-                                               => ForceAdaptProtocol.ForceAdaptMode.Vibration,
-                    _                          => ForceAdaptProtocol.ForceAdaptMode.Vibration,
+                    "lock" or "triggerlock" or "resistance" => ForceAdaptProtocol.ForceAdaptMode.TriggerLock,
+                    "vibrate" or "vibration" or "haptic" => ForceAdaptProtocol.ForceAdaptMode.Vibration,
+                    _ => ForceAdaptProtocol.ForceAdaptMode.Vibration,
                 };
 
                 ForceAdaptProtocol.TriggerSide? side = effect.Target switch
                 {
                     TriggerTarget.Left  => ForceAdaptProtocol.TriggerSide.LT,
                     TriggerTarget.Right => ForceAdaptProtocol.TriggerSide.RT,
-                    _                   => null, // Both
+                    _                   => null,
                 };
 
                 var expiry = effect.DurationMs > 0
                     ? DateTime.UtcNow.AddMilliseconds(effect.DurationMs)
                     : DateTime.MaxValue;
 
-                // Per-side dedup: if same mode is already active on this side,
-                // just refresh expiry instead of re-sending the full packet sequence.
                 if (side.HasValue)
                 {
                     var currentMode = side.Value == ForceAdaptProtocol.TriggerSide.LT
@@ -329,7 +248,7 @@ public class MappingEngine : IDisposable
                         return false;
                     }
                     var (ok, details) = _device.ApplyTriggerEffect(side.Value, mode);
-                    FlyDigiDevice.Log?.Invoke($"🔧 引擎发送 [{side.Value} {mode}]: {(ok ? "OK" : "FAIL")} {details}");
+                    FlyDigiDevice.Log?.Invoke($"Engine [{side.Value} {mode}]: {(ok ? "OK" : "FAIL")} {details}");
                     if (side.Value == ForceAdaptProtocol.TriggerSide.LT)
                     { _activeLtMode = mode; _ltExpiry = expiry; }
                     else
@@ -344,7 +263,7 @@ public class MappingEngine : IDisposable
                         return false;
                     }
                     var (ok, details) = _device.ApplyTriggerEffectBoth(mode);
-                    FlyDigiDevice.Log?.Invoke($"🔧 引擎发送 [Both {mode}]: {(ok ? "OK" : "FAIL")} {details}");
+                    FlyDigiDevice.Log?.Invoke($"Engine [Both {mode}]: {(ok ? "OK" : "FAIL")} {details}");
                     _activeLtMode = mode; _ltExpiry = expiry;
                     _activeRtMode = mode; _rtExpiry = expiry;
                 }
@@ -357,7 +276,6 @@ public class MappingEngine : IDisposable
                 byte right = effect.Target is TriggerTarget.Right or TriggerTarget.Both ? effect.Intensity : (byte)0;
                 _device.SetTriggerRumble(left, right);
 
-                // Schedule auto-stop if duration is set
                 if (effect.DurationMs > 0)
                 {
                     _ = Task.Delay(effect.DurationMs).ContinueWith(_ =>
@@ -371,9 +289,7 @@ public class MappingEngine : IDisposable
             case EffectType.Sequence:
             {
                 if (effect.Sequence != null)
-                {
                     _ = PlaySequence(effect.Sequence);
-                }
                 return true;
             }
         }
@@ -390,21 +306,9 @@ public class MappingEngine : IDisposable
         }
     }
 
-    private void OnGameStateChanged(object? sender, GameState state)
-    {
-        GameStateUpdate?.Invoke(this, state);
-    }
-
-    private void OnGameProcessChanged(object? sender, bool running)
-    {
-        StatusChanged?.Invoke(this, running
-            ? "Stellar Blade detected!"
-            : "Waiting for Stellar Blade...");
-    }
-
     private void OnXInputStateChanged(object? sender, XInputState state)
     {
-        if (!_gameMonitor.IsGameRunning) return;
-        _gameMonitor.UpdateFromXInput(state);
+        // Engine evaluates rules at its own pace in EngineLoop;
+        // XInputWatcher keeps CurrentState fresh.
     }
 }

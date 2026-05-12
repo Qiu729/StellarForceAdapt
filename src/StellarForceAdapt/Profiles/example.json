@@ -1,0 +1,51 @@
+{
+  "name": "示例配置",
+  "version": "1.0",
+  "description": "通用示例 — RT按下时机枪反馈，LT按下时赛车阻尼",
+  "rules": [
+    {
+      "id": "rt_mg",
+      "name": "RT 机枪反馈",
+      "priority": 100,
+      "cooldown_ms": 0,
+      "condition": {
+        "buttons": 0,
+        "buttons_any": 0,
+        "left_trigger_min": 0,
+        "left_trigger_max": 255,
+        "right_trigger_min": 30,
+        "right_trigger_max": 255,
+        "left_stick_magnitude_min": 0,
+        "right_stick_magnitude_min": 0
+      },
+      "effect": {
+        "type": "force_adapt",
+        "mode": "machinegun",
+        "target": "right",
+        "duration_ms": 0
+      }
+    },
+    {
+      "id": "lt_racing",
+      "name": "LT 赛车阻尼",
+      "priority": 100,
+      "cooldown_ms": 0,
+      "condition": {
+        "buttons": 0,
+        "buttons_any": 0,
+        "left_trigger_min": 30,
+        "left_trigger_max": 255,
+        "right_trigger_min": 0,
+        "right_trigger_max": 255,
+        "left_stick_magnitude_min": 0,
+        "right_stick_magnitude_min": 0
+      },
+      "effect": {
+        "type": "force_adapt",
+        "mode": "racing",
+        "target": "left",
+        "duration_ms": 0
+      }
+    }
+  ]
+}

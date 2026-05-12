@@ -41,7 +41,6 @@ public class FlyDigiDevice : IDisposable
     public static Action<string>? Log;
 
     public event EventHandler<bool>? ConnectionChanged;
-    public event EventHandler<byte[]>? InputReportReceived;
 
     public bool Connect()
     {
@@ -419,57 +418,11 @@ public class FlyDigiDevice : IDisposable
         return any;
     }
 
-    // APPROACH C: set to true to disable CD2 input reads entirely.
-    // When the charging dock is connected, CD2 input reports arrive continuously
-    // and HidStream interleaving (read outside lock + write inside lock) corrupts
-    // the non-thread-safe stream, breaking ForceAdapt output. Disabling reads is
-    // the simplest fix but loses SpaceStation coexistence keep-alive.
-    private const bool DisableCd2Reads = false;
-
     private void WatchdogLoop()
     {
         var token = _cts?.Token ?? CancellationToken.None;
-        int myGen = _connectionGen;
 
-        // CD2 (0x6001): read input reports for SpaceStation coexistence.
-        // APPROACH A (DisableCd2Reads=false): hold _streamLock during Read so
-        // HidStream is never accessed concurrently by the engine write path.
-        // ReadTimeout is kept short (20ms) so writes are blocked at most 20ms —
-        // input reports arrive ~1/s, so a brief window is enough to catch them.
-        // APPROACH C (DisableCd2Reads=true): skip reads entirely, just heartbeat.
-        bool isCd2 = _device?.ProductID == 0x6001 && !DisableCd2Reads;
-        if (isCd2)
-        {
-            var readBuffer = new byte[ForceAdaptProtocol.InputReportLength];
-            while (!token.IsCancellationRequested)
-            {
-                try
-                {
-                    _streamLock.Wait(token);
-                    try
-                    {
-                        if (_stream == null) break;
-                        _stream.ReadTimeout = 20;
-                        int read = _stream.Read(readBuffer, 0, readBuffer.Length);
-                        if (read > 0 && _connectionGen == myGen)
-                            InputReportReceived?.Invoke(this, readBuffer.Take(read).ToArray());
-                    }
-                    finally { _streamLock.Release(); }
-                }
-                catch (TimeoutException) { continue; }
-                catch (OperationCanceledException) { break; }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"[HID] Read error: {ex.Message}");
-                    if (_connectionGen == myGen)
-                        ConnectionChanged?.Invoke(this, false);
-                    break;
-                }
-            }
-            return;
-        }
-
-        // Non-CD2 / CD2-reads-disabled: heartbeat only (input handled by XInput).
+        // Heartbeat-only: XInput handles all input reading.
         while (!token.IsCancellationRequested)
         {
             _streamLock.Wait(token);

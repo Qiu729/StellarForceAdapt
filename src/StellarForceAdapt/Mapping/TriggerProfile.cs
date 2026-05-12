@@ -4,16 +4,10 @@ using System.Text.Json.Serialization;
 
 namespace StellarForceAdapt.Mapping;
 
-/// <summary>
-/// Defines a complete trigger profile with mapping rules.
-/// </summary>
 public class TriggerProfile
 {
     [JsonPropertyName("name")]
     public string Name { get; set; } = "Default";
-
-    [JsonPropertyName("game")]
-    public string Game { get; set; } = "";
 
     [JsonPropertyName("version")]
     public string Version { get; set; } = "1.0";
@@ -24,9 +18,6 @@ public class TriggerProfile
     [JsonPropertyName("rules")]
     public List<MappingRule> Rules { get; set; } = [];
 
-    /// <summary>
-    /// Load a profile from a JSON file.
-    /// </summary>
     public static TriggerProfile? Load(string path)
     {
         try
@@ -41,24 +32,18 @@ public class TriggerProfile
         }
     }
 
-    /// <summary>
-    /// Save profile to JSON file.
-    /// </summary>
     public void Save(string path)
     {
         var json = JsonSerializer.Serialize(this, s_jsonOptions);
         File.WriteAllText(path, json);
     }
 
-    /// <summary>
-    /// Load all profiles from the profiles directory.
-    /// </summary>
     public static List<(string Path, TriggerProfile Profile)> LoadAll(string directory)
     {
         var result = new List<(string, TriggerProfile)>();
         if (!Directory.Exists(directory)) return result;
 
-        foreach (var file in System.IO.Directory.GetFiles(directory, "*.json"))
+        foreach (var file in Directory.GetFiles(directory, "*.json"))
         {
             var profile = Load(file);
             if (profile != null && profile.Rules.Count > 0)
@@ -81,9 +66,6 @@ public class TriggerProfile
     }
 }
 
-/// <summary>
-/// One mapping rule: when condition is met, trigger an effect.
-/// </summary>
 public class MappingRule
 {
     [JsonPropertyName("id")]
@@ -105,101 +87,66 @@ public class MappingRule
     public int CooldownMs { get; set; } = 0;
 }
 
-/// <summary>
-/// Conditions that trigger a rule.
-/// </summary>
 public class TriggerCondition
 {
-    [JsonPropertyName("action")]
-    public PlayerActionCondition Action { get; set; } = PlayerActionCondition.Any;
+    [JsonPropertyName("buttons")]
+    public ushort Buttons { get; set; }
 
-    [JsonPropertyName("in_combat")]
-    public bool? InCombat { get; set; } = null; // null = don't care
+    [JsonPropertyName("buttons_any")]
+    public ushort ButtonsAny { get; set; }
 
-    [JsonPropertyName("trigger_min")]
-    public byte? TriggerMin { get; set; } = null;
+    [JsonPropertyName("left_trigger_min")]
+    public byte LeftTriggerMin { get; set; }
 
-    [JsonPropertyName("trigger_max")]
-    public byte? TriggerMax { get; set; } = null;
+    [JsonPropertyName("left_trigger_max")]
+    public byte LeftTriggerMax { get; set; } = 255;
 
-    [JsonPropertyName("combo_min")]
-    public int? ComboMin { get; set; } = null;
+    [JsonPropertyName("right_trigger_min")]
+    public byte RightTriggerMin { get; set; }
 
-    // CE-data conditions — require CE bridge to be connected
-    [JsonPropertyName("health_percent_max")]
-    public float? HealthPercentMax { get; set; } = null; // trigger when HP% <= this (e.g. 0.3 for low health)
+    [JsonPropertyName("right_trigger_max")]
+    public byte RightTriggerMax { get; set; } = 255;
 
-    [JsonPropertyName("beta_energy_min")]
-    public float? BetaEnergyMin { get; set; } = null; // trigger when BetaEnergy >= this
+    [JsonPropertyName("left_stick_magnitude_min")]
+    public short LeftStickMagnitudeMin { get; set; }
 
-    [JsonPropertyName("tachy_active")]
-    public bool? TachyActive { get; set; } = null; // trigger only when Tachy mode is on/off
+    [JsonPropertyName("right_stick_magnitude_min")]
+    public short RightStickMagnitudeMin { get; set; }
 }
 
-public enum PlayerActionCondition
-{
-    Any,
-    Idle,
-    Moving,
-    Sprinting,
-    MeleeAttack,
-    Shooting,
-    Aiming,
-    AimingAndShooting,
-    Blocking,
-    Dodging,
-    UsingSkill,
-    Reloading,
-    RunningAndShooting,
-    TachyMode,
-}
-
-/// <summary>
-/// A trigger effect to apply.
-/// </summary>
 public class TriggerEffect
 {
     [JsonPropertyName("type")]
-    public EffectType Type { get; set; } = EffectType.None;
+    public EffectType Type { get; set; } = EffectType.ForceAdapt;
 
     [JsonPropertyName("mode")]
-    public string Mode { get; set; } = ""; // "pushback", "lock", "vibrate", "rumble"
+    public string Mode { get; set; } = "racing";
 
-    // Position where effect activates (0-255)
     [JsonPropertyName("position")]
-    public byte Position { get; set; } = 0;
+    public byte Position { get; set; }
 
-    // Effect intensity (0-255)
     [JsonPropertyName("intensity")]
     public byte Intensity { get; set; } = 128;
 
-    // Effect speed/frequency (0-255)
     [JsonPropertyName("speed")]
     public byte Speed { get; set; } = 128;
 
-    // Duration in milliseconds (0 = continuous)
     [JsonPropertyName("duration_ms")]
-    public int DurationMs { get; set; } = 0;
+    public int DurationMs { get; set; }
 
-    // Which trigger: left, right, or both
     [JsonPropertyName("target")]
     public TriggerTarget Target { get; set; } = TriggerTarget.Both;
 
-    // For sequenced effects - list of sub-effects
     [JsonPropertyName("sequence")]
-    public List<TriggerEffect>? Sequence { get; set; } = null;
-
-    // For vibration patterns
-    [JsonPropertyName("pattern")]
-    public string? Pattern { get; set; } = null; // "rapid", "pulse", "constant"
+    public List<TriggerEffect>? Sequence { get; set; }
 }
 
 public enum EffectType
 {
     None,
-    ForceAdapt,   // ForceAdapt mechanical effect
-    Rumble,       // Trigger rumble motor
-    Sequence,     // Timed sequence of effects
+    ForceAdapt,
+    Rumble,
+    Sequence,
 }
 
 public enum TriggerTarget
@@ -209,14 +156,10 @@ public enum TriggerTarget
     Both,
 }
 
-/// <summary>
-/// Runtime evaluation of a rule, including cooldown tracking.
-/// </summary>
 public class RuleState
 {
     public MappingRule Rule { get; init; } = null!;
     public DateTime LastTriggered { get; set; } = DateTime.MinValue;
-    public bool IsActive { get; set; }
 
     public bool CanTrigger()
     {
@@ -227,11 +170,5 @@ public class RuleState
     public void Triggered()
     {
         LastTriggered = DateTime.UtcNow;
-        IsActive = true;
-    }
-
-    public void Deactivate()
-    {
-        IsActive = false;
     }
 }
