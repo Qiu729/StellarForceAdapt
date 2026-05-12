@@ -178,17 +178,26 @@ public class MappingEngine : IDisposable
 
     private static bool EvaluateCondition(TriggerCondition cond, XInputState state)
     {
-        if (cond.Buttons != 0 && (state.Buttons & cond.Buttons) != cond.Buttons)
+        if (cond.PreconditionButtons != 0 && (state.Buttons & cond.PreconditionButtons) != cond.PreconditionButtons)
             return false;
 
-        if (cond.ButtonsAny != 0 && (state.Buttons & cond.ButtonsAny) == 0)
+        if (cond.PreconditionLeftTrigger && state.LeftTrigger == 0)
             return false;
 
-        if (state.LeftTrigger < cond.LeftTriggerMin || state.LeftTrigger > cond.LeftTriggerMax)
+        if (cond.PreconditionRightTrigger && state.RightTrigger == 0)
             return false;
 
-        if (state.RightTrigger < cond.RightTriggerMin || state.RightTrigger > cond.RightTriggerMax)
-            return false;
+        if (cond.LeftTriggerMin > 0 || cond.LeftTriggerMax < 255)
+        {
+            if (state.LeftTrigger < cond.LeftTriggerMin || state.LeftTrigger > cond.LeftTriggerMax)
+                return false;
+        }
+
+        if (cond.RightTriggerMin > 0 || cond.RightTriggerMax < 255)
+        {
+            if (state.RightTrigger < cond.RightTriggerMin || state.RightTrigger > cond.RightTriggerMax)
+                return false;
+        }
 
         if (cond.LeftStickMagnitudeMin > 0)
         {

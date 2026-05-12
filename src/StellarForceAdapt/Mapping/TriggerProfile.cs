@@ -94,11 +94,14 @@ public class MappingRule
 
 public class TriggerCondition
 {
-    [JsonPropertyName("buttons")]
-    public ushort Buttons { get; set; }
+    [JsonPropertyName("precondition_buttons")]
+    public ushort PreconditionButtons { get; set; }
 
-    [JsonPropertyName("buttons_any")]
-    public ushort ButtonsAny { get; set; }
+    [JsonPropertyName("precondition_left_trigger")]
+    public bool PreconditionLeftTrigger { get; set; }
+
+    [JsonPropertyName("precondition_right_trigger")]
+    public bool PreconditionRightTrigger { get; set; }
 
     [JsonPropertyName("left_trigger_min")]
     public byte LeftTriggerMin { get; set; }

@@ -118,21 +118,10 @@
                         <StackPanel>
                             <TextBlock Text="&#x1F3AF; 触发条件" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,6" />
 
-                            <!-- Buttons (all must match) -->
-                            <TextBlock Text="按键（必须全部按下）" FontSize="11"
+                            <!-- Precondition -->
+                            <TextBlock Text="前置条件（全部需按住）" FontSize="11"
                                        Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,2" />
-                            <ItemsControl x:Name="ButtonsAllList" ItemTemplate="{StaticResource ButtonCheckTemplate}" Margin="0,0,0,6">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <WrapPanel />
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                            </ItemsControl>
-
-                            <!-- Buttons (any match) -->
-                            <TextBlock Text="按键（任一按下即可）" FontSize="11"
-                                       Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,2" />
-                            <ItemsControl x:Name="ButtonsAnyList" ItemTemplate="{StaticResource ButtonCheckTemplate}" Margin="0,0,0,6">
+                            <ItemsControl x:Name="PreconditionList" ItemTemplate="{StaticResource ButtonCheckTemplate}" Margin="0,0,0,6">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
                                         <WrapPanel />
@@ -147,7 +136,7 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="40" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="LT 范围" FontSize="11" Width="55"
+                                <TextBlock Grid.Column="0" Text="LT 最小" FontSize="11" Width="55"
                                            Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
                                 <Slider Grid.Column="1" x:Name="LtMinSlider" Minimum="0" Maximum="255"
                                         SmallChange="1" LargeChange="16"
@@ -162,7 +151,7 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="40" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="" FontSize="11" Width="55" />
+                                <TextBlock Grid.Column="0" Text="LT 最大" FontSize="11" Width="55" />
                                 <Slider Grid.Column="1" x:Name="LtMaxSlider" Minimum="0" Maximum="255"
                                         Value="255" SmallChange="1" LargeChange="16"
                                         ValueChanged="TriggerSlider_Changed" />
@@ -177,7 +166,7 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="40" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="RT 范围" FontSize="11" Width="55"
+                                <TextBlock Grid.Column="0" Text="RT 最小" FontSize="11" Width="55"
                                            Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
                                 <Slider Grid.Column="1" x:Name="RtMinSlider" Minimum="0" Maximum="255"
                                         SmallChange="1" LargeChange="16"
@@ -192,7 +181,7 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="40" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="" FontSize="11" Width="55" />
+                                <TextBlock Grid.Column="0" Text="RT 最大" FontSize="11" Width="55" />
                                 <Slider Grid.Column="1" x:Name="RtMaxSlider" Minimum="0" Maximum="255"
                                         Value="255" SmallChange="1" LargeChange="16"
                                         ValueChanged="TriggerSlider_Changed" />

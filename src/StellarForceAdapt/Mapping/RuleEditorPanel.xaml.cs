@@ -11,17 +11,16 @@ public partial class RuleEditorPanel : UserControl
     private bool _suppressUpdates;
     private bool _isDirty;
 
-    private readonly List<ButtonFlag> _buttonsAllFlags;
-    private readonly List<ButtonFlag> _buttonsAnyFlags;
+    private readonly List<ButtonFlag> _preconditionFlags;
 
-    private static readonly (string Name, ushort Mask)[] s_buttonDefs =
+    private static readonly (string Name, ushort Mask, bool IsTrigger)[] s_buttonDefs =
     [
-        ("A", 0x1000), ("B", 0x2000), ("X", 0x4000), ("Y", 0x8000),
-        ("LB", 0x0100), ("RB", 0x0200),
-        ("LT", 0x0000), ("RT", 0x0000), // triggers handled separately
-        ("↑", 0x0001), ("↓", 0x0002), ("←", 0x0004), ("→", 0x0008),
-        ("Start", 0x0010), ("Back", 0x0020),
-        ("L3", 0x0040), ("R3", 0x0080),
+        ("A", 0x1000, false), ("B", 0x2000, false), ("X", 0x4000, false), ("Y", 0x8000, false),
+        ("LB", 0x0100, false), ("RB", 0x0200, false),
+        ("LT", 0x0000, true), ("RT", 0x0000, true),
+        ("↑", 0x0001, false), ("↓", 0x0002, false), ("←", 0x0004, false), ("→", 0x0008, false),
+        ("Start", 0x0010, false), ("Back", 0x0020, false),
+        ("L3", 0x0040, false), ("R3", 0x0080, false),
     ];
 
     public event EventHandler? ProfileSaved;
@@ -30,14 +29,11 @@ public partial class RuleEditorPanel : UserControl
     {
         InitializeComponent();
 
-        _buttonsAllFlags = s_buttonDefs.Select(d => new ButtonFlag { Name = d.Name, Mask = d.Mask }).ToList();
-        _buttonsAnyFlags = s_buttonDefs.Select(d => new ButtonFlag { Name = d.Name, Mask = d.Mask }).ToList();
+        _preconditionFlags = s_buttonDefs.Select(d => new ButtonFlag { Name = d.Name, Mask = d.Mask, IsTrigger = d.IsTrigger }).ToList();
 
-        foreach (var f in _buttonsAllFlags) f.Changed += OnButtonFlagChanged;
-        foreach (var f in _buttonsAnyFlags) f.Changed += OnButtonFlagChanged;
+        foreach (var f in _preconditionFlags) f.Changed += OnButtonFlagChanged;
 
-        ButtonsAllList.ItemsSource = _buttonsAllFlags;
-        ButtonsAnyList.ItemsSource = _buttonsAnyFlags;
+        PreconditionList.ItemsSource = _preconditionFlags;
 
         // Populate combo boxes
         EffectTypeCombo.ItemsSource = Enum.GetValues<EffectType>();
@@ -108,9 +104,8 @@ public partial class RuleEditorPanel : UserControl
         var cond = rule.Condition;
         var eff = rule.Effect;
 
-        // Button flags
-        SetButtonFlags(_buttonsAllFlags, cond.Buttons);
-        SetButtonFlags(_buttonsAnyFlags, cond.ButtonsAny);
+        // Precondition flags
+        SetPreconditionFlags(cond);
 
         // Trigger sliders
         LtMinSlider.Value = cond.LeftTriggerMin;
@@ -145,31 +140,37 @@ public partial class RuleEditorPanel : UserControl
         _suppressUpdates = false;
     }
 
-    private static void SetButtonFlags(List<ButtonFlag> flags, ushort mask)
+    private void SetPreconditionFlags(TriggerCondition cond)
     {
-        foreach (var f in flags)
+        foreach (var f in _preconditionFlags)
         {
-            if (f.Mask != 0)
-                f.IsChecked = (mask & f.Mask) != 0;
+            if (f.IsTrigger)
+                f.IsChecked = f.Name == "LT" ? cond.PreconditionLeftTrigger : cond.PreconditionRightTrigger;
             else
-                f.IsChecked = false;
+                f.IsChecked = (cond.PreconditionButtons & f.Mask) != 0;
         }
-    }
-
-    private static ushort GetButtonMask(List<ButtonFlag> flags)
-    {
-        ushort mask = 0;
-        foreach (var f in flags)
-            if (f.IsChecked && f.Mask != 0)
-                mask |= f.Mask;
-        return mask;
     }
 
     private void OnButtonFlagChanged(object? sender, EventArgs e)
     {
-        if (_suppressUpdates || _selectedRule == null) return;
-        _selectedRule.Condition.Buttons = GetButtonMask(_buttonsAllFlags);
-        _selectedRule.Condition.ButtonsAny = GetButtonMask(_buttonsAnyFlags);
+        if (_suppressUpdates || _selectedRule == null || sender is not ButtonFlag flag) return;
+
+        if (flag.IsTrigger)
+        {
+            if (flag.Name == "LT")
+                _selectedRule.Condition.PreconditionLeftTrigger = flag.IsChecked;
+            else if (flag.Name == "RT")
+                _selectedRule.Condition.PreconditionRightTrigger = flag.IsChecked;
+        }
+        else
+        {
+            ushort mask = 0;
+            foreach (var f in _preconditionFlags)
+                if (f.IsChecked && !f.IsTrigger)
+                    mask |= f.Mask;
+            _selectedRule.Condition.PreconditionButtons = mask;
+        }
+
         _isDirty = true;
     }
 
@@ -383,6 +384,7 @@ public class ButtonFlag : System.ComponentModel.INotifyPropertyChanged
 {
     public string Name { get; set; } = "";
     public ushort Mask { get; set; }
+    public bool IsTrigger { get; set; }
 
     private bool _isChecked;
     public bool IsChecked
