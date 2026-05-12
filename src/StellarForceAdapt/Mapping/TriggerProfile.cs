@@ -61,18 +61,24 @@ public class TriggerProfile
         foreach (var file in System.IO.Directory.GetFiles(directory, "*.json"))
         {
             var profile = Load(file);
-            if (profile != null)
+            if (profile != null && profile.Rules.Count > 0)
                 result.Add((file, profile));
         }
         return result;
     }
 
-    private static readonly JsonSerializerOptions s_jsonOptions = new()
+    private static readonly JsonSerializerOptions s_jsonOptions;
+
+    static TriggerProfile()
     {
-        WriteIndented = true,
-        ReadCommentHandling = JsonCommentHandling.Skip,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-    };
+        s_jsonOptions = new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            ReadCommentHandling = JsonCommentHandling.Skip,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        };
+        s_jsonOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseLower));
+    }
 }
 
 /// <summary>
@@ -105,7 +111,6 @@ public class MappingRule
 public class TriggerCondition
 {
     [JsonPropertyName("action")]
-    [JsonConverter(typeof(JsonStringEnumConverter))]
     public PlayerActionCondition Action { get; set; } = PlayerActionCondition.Any;
 
     [JsonPropertyName("in_combat")]
@@ -155,7 +160,6 @@ public enum PlayerActionCondition
 public class TriggerEffect
 {
     [JsonPropertyName("type")]
-    [JsonConverter(typeof(JsonStringEnumConverter))]
     public EffectType Type { get; set; } = EffectType.None;
 
     [JsonPropertyName("mode")]
@@ -179,7 +183,6 @@ public class TriggerEffect
 
     // Which trigger: left, right, or both
     [JsonPropertyName("target")]
-    [JsonConverter(typeof(JsonStringEnumConverter))]
     public TriggerTarget Target { get; set; } = TriggerTarget.Both;
 
     // For sequenced effects - list of sub-effects

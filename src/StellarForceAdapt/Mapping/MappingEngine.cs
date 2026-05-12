@@ -17,19 +17,15 @@ public class MappingEngine : IDisposable
     private List<RuleState> _activeRules = [];
     private bool _running;
 
-    // ForceAdapt effect tracking — prevents the 200Hz loop from clearing active effects.
-    // Stores the last-applied V2 (side, mode) pair and its expiry so we can cleanly
-    // revert to Off once the rule's duration elapses.
-    private ForceAdaptEffectState? _activeForceAdapt;
-    private DateTime _forceAdaptExpiry = DateTime.MinValue;
+    // ForceAdapt effect tracking — per-side to prevent LT/RT from overwriting each other.
+    // Each side independently tracks its active mode and expiry so the loop can cleanly
+    // revert to Off when the duration elapses.
+    private ForceAdaptProtocol.ForceAdaptMode? _activeLtMode;
+    private ForceAdaptProtocol.ForceAdaptMode? _activeRtMode;
+    private DateTime _ltExpiry = DateTime.MinValue;
+    private DateTime _rtExpiry = DateTime.MinValue;
 
     private readonly XInputWatcher _xinput = new();
-
-    private struct ForceAdaptEffectState
-    {
-        public ForceAdaptProtocol.ForceAdaptMode Mode;
-        public ForceAdaptProtocol.TriggerSide? Side; // null = both triggers
-    }
 
 
     public TriggerProfile? CurrentProfile { get; private set; }
@@ -88,7 +84,8 @@ public class MappingEngine : IDisposable
         _gameMonitor.Stop();
 
         _device.ResetTriggers();
-        _activeForceAdapt = null;
+        _activeLtMode = null;
+        _activeRtMode = null;
 
         StatusChanged?.Invoke(this, "Engine stopped");
         Debug.WriteLine("[Engine] Stopped");
@@ -128,60 +125,98 @@ public class MappingEngine : IDisposable
     private void EvaluateRules()
     {
         var gameState = _gameMonitor.CurrentState;
-        if (!gameState.IsRunning) return;
 
-        // Check if a ForceAdapt effect has expired — revert to Off on the
-        // same channel(s) so the trigger returns to a neutral analog axis.
-        if (_activeForceAdapt != null && DateTime.UtcNow >= _forceAdaptExpiry)
+        // When game exits, immediately turn off all active effects.
+        if (!gameState.IsRunning)
         {
-            var prev = _activeForceAdapt.Value;
-            if (prev.Side.HasValue)
-                _device.ApplyTriggerEffect(prev.Side.Value, ForceAdaptProtocol.ForceAdaptMode.Off);
-            else
-                _device.ApplyTriggerEffectBoth(ForceAdaptProtocol.ForceAdaptMode.Off);
-            _activeForceAdapt = null;
+            if (_activeLtMode != null)
+            {
+                _device.ApplyTriggerEffect(ForceAdaptProtocol.TriggerSide.LT, ForceAdaptProtocol.ForceAdaptMode.Off);
+                _activeLtMode = null;
+            }
+            if (_activeRtMode != null)
+            {
+                _device.ApplyTriggerEffect(ForceAdaptProtocol.TriggerSide.RT, ForceAdaptProtocol.ForceAdaptMode.Off);
+                _activeRtMode = null;
+            }
+            return;
         }
 
-        // Find the highest-priority matching rule
+        // Safety net: expiry-based fallback (only fires when duration_ms > 0 and
+        // ApplyEffect dedup hasn't refreshed it in time).
+        if (_activeLtMode != null && DateTime.UtcNow >= _ltExpiry)
+        {
+            _device.ApplyTriggerEffect(ForceAdaptProtocol.TriggerSide.LT, ForceAdaptProtocol.ForceAdaptMode.Off);
+            _activeLtMode = null;
+        }
+        if (_activeRtMode != null && DateTime.UtcNow >= _rtExpiry)
+        {
+            _device.ApplyTriggerEffect(ForceAdaptProtocol.TriggerSide.RT, ForceAdaptProtocol.ForceAdaptMode.Off);
+            _activeRtMode = null;
+        }
+
+        // Evaluate each trigger side independently.
+        var bestLt = FindBestRule(gameState, ForceAdaptProtocol.TriggerSide.LT);
+        var bestRt = FindBestRule(gameState, ForceAdaptProtocol.TriggerSide.RT);
+
+        // Primary turn-off: when a rule stops matching, revert the trigger to neutral.
+        if (bestLt == null && _activeLtMode != null)
+        {
+            _device.ApplyTriggerEffect(ForceAdaptProtocol.TriggerSide.LT, ForceAdaptProtocol.ForceAdaptMode.Off);
+            _activeLtMode = null;
+        }
+        if (bestRt == null && _activeRtMode != null)
+        {
+            _device.ApplyTriggerEffect(ForceAdaptProtocol.TriggerSide.RT, ForceAdaptProtocol.ForceAdaptMode.Off);
+            _activeRtMode = null;
+        }
+
+        // RT applied first so its state is correctly set before LT's sequence runs.
+        // MarkRuleTriggered only fires on actual HID application (not dedup refresh),
+        // so cooldown_ms works correctly for one-shot effects.
+        if (bestRt != null)
+        {
+            if (ApplyEffect(bestRt.Effect))
+                MarkRuleTriggered(bestRt);
+        }
+        if (bestLt != null && bestLt != bestRt)
+        {
+            if (ApplyEffect(bestLt.Effect))
+                MarkRuleTriggered(bestLt);
+        }
+    }
+
+    private MappingRule? FindBestRule(GameState gameState, ForceAdaptProtocol.TriggerSide side)
+    {
         MappingRule? bestRule = null;
         int bestPriority = int.MinValue;
 
         foreach (var ruleState in _activeRules)
         {
             if (!ruleState.CanTrigger()) continue;
+            if (!EvaluateCondition(ruleState.Rule.Condition, gameState)) continue;
 
-            if (EvaluateCondition(ruleState.Rule.Condition, gameState))
+            var target = ruleState.Rule.Effect.Target;
+            bool matchesSide = target == TriggerTarget.Both
+                || (side == ForceAdaptProtocol.TriggerSide.LT && target == TriggerTarget.Left)
+                || (side == ForceAdaptProtocol.TriggerSide.RT && target == TriggerTarget.Right);
+            if (!matchesSide) continue;
+
+            if (ruleState.Rule.Priority > bestPriority)
             {
-                if (ruleState.Rule.Priority > bestPriority)
-                {
-                    bestPriority = ruleState.Rule.Priority;
-                    bestRule = ruleState.Rule;
-                }
+                bestPriority = ruleState.Rule.Priority;
+                bestRule = ruleState.Rule;
             }
         }
 
-        // Apply the matched effect
-        if (bestRule != null)
-        {
-            ApplyEffect(bestRule.Effect);
-            var ruleState = _activeRules.Find(r => r.Rule.Id == bestRule.Id);
-            ruleState?.Triggered();
-            EffectTriggered?.Invoke(this, bestRule.Name);
-        }
-        else if (_activeForceAdapt != null)
-        {
-            // ForceAdapt effect is still active — don't send default rumble that might interfere
-        }
-        else if (gameState.InCombat)
-        {
-            // Default subtle vibration when in combat
-            _device.SetTriggerRumble(20, 20);
-        }
-        else
-        {
-            // No combat - light or no feedback
-            _device.SetTriggerRumble(0, 0);
-        }
+        return bestRule;
+    }
+
+    private void MarkRuleTriggered(MappingRule rule)
+    {
+        var ruleState = _activeRules.Find(r => r.Rule.Id == rule.Id);
+        ruleState?.Triggered();
+        EffectTriggered?.Invoke(this, rule.Name);
     }
 
     private bool EvaluateCondition(TriggerCondition condition, GameState state)
@@ -245,19 +280,14 @@ public class MappingEngine : IDisposable
         return true;
     }
 
-    private void ApplyEffect(TriggerEffect effect)
+    private bool ApplyEffect(TriggerEffect effect)
     {
-        if (!_device.IsConnected) return;
+        if (!_device.IsConnected) return false;
 
         switch (effect.Type)
         {
             case EffectType.ForceAdapt:
             {
-                // V2 (2026-05): map the profile's free-form mode string onto
-                // one of the six firmware modes. Unknown strings default to
-                // Vibration so profiles written against the old V1 enum
-                // (which only had Off/Resistance/Vibration) still behave
-                // sensibly.
                 var mode = effect.Mode?.Trim().ToLowerInvariant() switch
                 {
                     "off" or "none" or "clear" => ForceAdaptProtocol.ForceAdaptMode.Off,
@@ -273,7 +303,6 @@ public class MappingEngine : IDisposable
                     _                          => ForceAdaptProtocol.ForceAdaptMode.Vibration,
                 };
 
-                // Route to LT / RT / Both based on the rule's Target field.
                 ForceAdaptProtocol.TriggerSide? side = effect.Target switch
                 {
                     TriggerTarget.Left  => ForceAdaptProtocol.TriggerSide.LT,
@@ -281,22 +310,43 @@ public class MappingEngine : IDisposable
                     _                   => null, // Both
                 };
 
-                if (side.HasValue)
-                    _device.ApplyTriggerEffect(side.Value, mode);
-                else
-                    _device.ApplyTriggerEffectBoth(mode);
-
-                // Remember the active effect so the 200Hz loop doesn't stomp
-                // it with default rumble, and so it can be cleanly reverted.
-                _activeForceAdapt = new ForceAdaptEffectState
-                {
-                    Mode = mode,
-                    Side = side,
-                };
-                _forceAdaptExpiry = effect.DurationMs > 0
+                var expiry = effect.DurationMs > 0
                     ? DateTime.UtcNow.AddMilliseconds(effect.DurationMs)
                     : DateTime.MaxValue;
-                break;
+
+                // Per-side dedup: if same mode is already active on this side,
+                // just refresh expiry instead of re-sending the full packet sequence.
+                if (side.HasValue)
+                {
+                    var currentMode = side.Value == ForceAdaptProtocol.TriggerSide.LT
+                        ? _activeLtMode : _activeRtMode;
+                    if (currentMode == mode)
+                    {
+                        if (side.Value == ForceAdaptProtocol.TriggerSide.LT)
+                            _ltExpiry = expiry;
+                        else
+                            _rtExpiry = expiry;
+                        return false;
+                    }
+                    _device.ApplyTriggerEffect(side.Value, mode);
+                    if (side.Value == ForceAdaptProtocol.TriggerSide.LT)
+                    { _activeLtMode = mode; _ltExpiry = expiry; }
+                    else
+                    { _activeRtMode = mode; _rtExpiry = expiry; }
+                }
+                else
+                {
+                    if (_activeLtMode == mode && _activeRtMode == mode)
+                    {
+                        _ltExpiry = expiry;
+                        _rtExpiry = expiry;
+                        return false;
+                    }
+                    _device.ApplyTriggerEffectBoth(mode);
+                    _activeLtMode = mode; _ltExpiry = expiry;
+                    _activeRtMode = mode; _rtExpiry = expiry;
+                }
+                return true;
             }
 
             case EffectType.Rumble:
@@ -313,7 +363,7 @@ public class MappingEngine : IDisposable
                         if (_running) _device.SetTriggerRumble(0, 0);
                     });
                 }
-                break;
+                return true;
             }
 
             case EffectType.Sequence:
@@ -322,9 +372,10 @@ public class MappingEngine : IDisposable
                 {
                     _ = PlaySequence(effect.Sequence);
                 }
-                break;
+                return true;
             }
         }
+        return false;
     }
 
     private async Task PlaySequence(List<TriggerEffect> sequence)

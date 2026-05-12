@@ -1,306 +1,38 @@
 {
-  "name": "Stellar Blade - CE深度适配",
+  "name": "Stellar Blade - DS5扳机风格",
   "game": "Stellar Blade (剑星)",
-  "version": "1.2",
-  "description": "剑星自适应扳机 — 需要CE桥接。X/Y攻击, LB格挡, LT瞄准, RT射击, CE: HP/Beta/Tachy触发",
+  "version": "2.0",
+  "description": "剑星自适应扳机 — LT瞄准时RT机枪反馈",
   "rules": [
     {
-      "id": "tachy_mode_rt",
-      "name": "Tachy模式 - RT扳机锁",
-      "priority": 200,
-      "cooldown_ms": 1000,
-      "condition": {
-        "action": "tachy_mode",
-        "tachy_active": true
-      },
-      "effect": {
-        "type": "force_adapt",
-        "mode": "triggerlock",
-        "position": 50,
-        "intensity": 255,
-        "speed": 0,
-        "target": "right",
-        "duration_ms": 2000
-      }
-    },
-    {
-      "id": "low_health_lt",
-      "name": "低血量 - LT阻尼",
-      "priority": 180,
-      "cooldown_ms": 2000,
-      "condition": {
-        "action": "any",
-        "in_combat": true,
-        "health_percent_max": 0.3
-      },
-      "effect": {
-        "type": "force_adapt",
-        "mode": "racing",
-        "position": 30,
-        "intensity": 220,
-        "speed": 100,
-        "target": "left",
-        "duration_ms": 3000
-      }
-    },
-    {
-      "id": "beta_skill_rt",
-      "name": "Beta技能就绪 - RT狙击突破",
-      "priority": 170,
-      "cooldown_ms": 500,
-      "condition": {
-        "action": "aiming",
-        "beta_energy_min": 100
-      },
-      "effect": {
-        "type": "force_adapt",
-        "mode": "sniper",
-        "position": 60,
-        "intensity": 255,
-        "speed": 180,
-        "target": "right",
-        "duration_ms": 800
-      }
-    },
-    {
-      "id": "tachy_lt_racing",
-      "name": "Tachy模式 - LT赛车阻尼",
-      "priority": 160,
-      "cooldown_ms": 1000,
-      "condition": {
-        "action": "tachy_mode",
-        "tachy_active": true
-      },
-      "effect": {
-        "type": "force_adapt",
-        "mode": "racing",
-        "position": 20,
-        "intensity": 200,
-        "speed": 80,
-        "target": "left",
-        "duration_ms": 2000
-      }
-    },
-    {
-      "id": "gunfire_heavy",
-      "name": "射击 - 后坐力",
-      "priority": 110,
-      "cooldown_ms": 200,
+      "id": "ads_rt",
+      "name": "瞄准射击 - RT机枪",
+      "priority": 120,
+      "cooldown_ms": 0,
       "condition": {
         "action": "aiming_and_shooting",
         "in_combat": true
       },
       "effect": {
         "type": "force_adapt",
-        "mode": "pushback",
-        "position": 30,
-        "intensity": 220,
-        "speed": 180,
+        "mode": "machinegun",
         "target": "right",
-        "duration_ms": 150
+        "duration_ms": 0
       }
     },
     {
-      "id": "skill_ready",
-      "name": "技能就绪",
-      "priority": 105,
-      "cooldown_ms": 1000,
-      "condition": {
-        "action": "using_skill"
-      },
-      "effect": {
-        "type": "sequence",
-        "target": "both",
-        "sequence": [
-          { "type": "rumble", "mode": "vibrate", "intensity": 100, "duration_ms": 100 },
-          { "type": "rumble", "mode": "vibrate", "intensity": 0, "duration_ms": 50 },
-          { "type": "rumble", "mode": "vibrate", "intensity": 200, "duration_ms": 150 }
-        ]
-      }
-    },
-    {
-      "id": "gunfire_rapid",
-      "name": "射击 - 快速射击",
-      "priority": 100,
-      "cooldown_ms": 0,
-      "condition": {
-        "action": "shooting",
-        "in_combat": true,
-        "trigger_min": 30
-      },
-      "effect": {
-        "type": "force_adapt",
-        "mode": "vibrate",
-        "position": 180,
-        "intensity": 200,
-        "speed": 200,
-        "target": "right",
-        "duration_ms": 80
-      }
-    },
-    {
-      "id": "blocking",
-      "name": "格挡防御",
-      "priority": 95,
-      "cooldown_ms": 50,
-      "condition": {
-        "action": "blocking",
-        "in_combat": true
-      },
-      "effect": {
-        "type": "force_adapt",
-        "mode": "lock",
-        "position": 40,
-        "intensity": 220,
-        "speed": 0,
-        "target": "left",
-        "duration_ms": 250
-      }
-    },
-    {
-      "id": "melee_combo",
-      "name": "近战 - 连击",
-      "priority": 90,
-      "cooldown_ms": 100,
-      "condition": {
-        "action": "melee_attack",
-        "in_combat": true
-      },
-      "effect": {
-        "type": "sequence",
-        "target": "both",
-        "sequence": [
-          { "type": "rumble", "mode": "vibrate", "intensity": 200, "duration_ms": 50 },
-          { "type": "rumble", "mode": "vibrate", "intensity": 100, "duration_ms": 30 },
-          { "type": "rumble", "mode": "vibrate", "intensity": 200, "duration_ms": 50 },
-          { "type": "rumble", "mode": "vibrate", "intensity": 150, "duration_ms": 40 }
-        ]
-      }
-    },
-    {
-      "id": "shooting_force",
-      "name": "射击 - ForceAdapt 后坐力",
-      "priority": 86,
-      "cooldown_ms": 150,
-      "condition": {
-        "action": "shooting",
-        "in_combat": true,
-        "trigger_min": 30
-      },
-      "effect": {
-        "type": "force_adapt",
-        "mode": "pushback",
-        "position": 50,
-        "intensity": 180,
-        "speed": 200,
-        "target": "right",
-        "duration_ms": 100
-      }
-    },
-    {
-      "id": "dodge",
-      "name": "闪避",
-      "priority": 85,
-      "cooldown_ms": 300,
-      "condition": {
-        "action": "dodging"
-      },
-      "effect": {
-        "type": "rumble",
-        "mode": "vibrate",
-        "intensity": 200,
-        "speed": 255,
-        "target": "both",
-        "duration_ms": 100
-      }
-    },
-    {
-      "id": "melee_force",
-      "name": "近战 - ForceAdapt 反馈",
-      "priority": 82,
-      "cooldown_ms": 200,
-      "condition": {
-        "action": "melee_attack",
-        "in_combat": true
-      },
-      "effect": {
-        "type": "force_adapt",
-        "mode": "pushback",
-        "position": 40,
-        "intensity": 220,
-        "speed": 200,
-        "target": "right",
-        "duration_ms": 200
-      }
-    },
-    {
-      "id": "melee_light",
-      "name": "近战 - 轻攻击反馈",
-      "priority": 80,
-      "cooldown_ms": 150,
-      "condition": {
-        "action": "melee_attack",
-        "combo_min": null
-      },
-      "effect": {
-        "type": "rumble",
-        "mode": "vibrate",
-        "intensity": 140,
-        "speed": 100,
-        "target": "right",
-        "duration_ms": 80
-      }
-    },
-    {
-      "id": "aiming",
-      "name": "瞄准 - 阻力",
-      "priority": 70,
+      "id": "aim_rt",
+      "name": "仅瞄准 - RT机枪",
+      "priority": 120,
       "cooldown_ms": 0,
       "condition": {
         "action": "aiming"
       },
       "effect": {
         "type": "force_adapt",
-        "mode": "pushback",
-        "position": 80,
-        "intensity": 140,
-        "speed": 100,
+        "mode": "machinegun",
         "target": "right",
-        "duration_ms": 200
-      }
-    },
-    {
-      "id": "sprinting",
-      "name": "冲刺奔跑",
-      "priority": 60,
-      "cooldown_ms": 500,
-      "condition": {
-        "action": "sprinting"
-      },
-      "effect": {
-        "type": "rumble",
-        "mode": "vibrate",
-        "intensity": 60,
-        "speed": 200,
-        "target": "both",
         "duration_ms": 0
-      }
-    },
-    {
-      "id": "combat_baseline",
-      "name": "战斗基础震动",
-      "priority": 50,
-      "cooldown_ms": 500,
-      "condition": {
-        "action": "any",
-        "in_combat": true
-      },
-      "effect": {
-        "type": "rumble",
-        "mode": "vibrate",
-        "intensity": 40,
-        "target": "both",
-        "duration_ms": 300
       }
     }
   ]
