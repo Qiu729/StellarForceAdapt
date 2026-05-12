@@ -1,0 +1,377 @@
+<UserControl x:Class="StellarForceAdapt.Mapping.RuleEditorPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mapping="clr-namespace:StellarForceAdapt.Mapping"
+             MinWidth="320">
+    <UserControl.Resources>
+        <!-- Button flag item for checkbox lists -->
+        <DataTemplate x:Key="ButtonCheckTemplate">
+            <CheckBox Content="{Binding Name}" IsChecked="{Binding IsChecked}"
+                      Foreground="{StaticResource TextPrimaryBrush}"
+                      Margin="2,1" FontSize="11"
+                      VerticalAlignment="Center" />
+        </DataTemplate>
+
+        <!-- Rule list item template -->
+        <DataTemplate x:Key="RuleListItemTemplate" DataType="{x:Type mapping:MappingRule}">
+            <Border x:Name="RowBorder" CornerRadius="4" Padding="6,4" Margin="0,0,0,2"
+                    Cursor="Hand" MouseLeftButtonDown="RuleItem_Click">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Orientation="Horizontal">
+                        <TextBlock Text="{Binding Name}" FontSize="12" VerticalAlignment="Center"
+                                   Foreground="{StaticResource TextPrimaryBrush}" />
+                        <Border Background="{StaticResource Accent}" CornerRadius="8"
+                                Padding="6,1" Margin="8,0,0,0">
+                            <TextBlock FontSize="10" Foreground="White">
+                                <TextBlock.Text>
+                                    <Binding Path="Priority" StringFormat="P{0}" />
+                                </TextBlock.Text>
+                            </TextBlock>
+                        </Border>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal">
+                        <Button Content="▲" Tag="{Binding}" Click="MoveUp_Click"
+                                Width="24" Height="20" FontSize="9" Padding="0"
+                                Background="Transparent" />
+                        <Button Content="▼" Tag="{Binding}" Click="MoveDown_Click"
+                                Width="24" Height="20" FontSize="9" Padding="0"
+                                Background="Transparent" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource FindAncestor, AncestorType=ListBoxItem}}"
+                             Value="True">
+                    <Setter TargetName="RowBorder" Property="Background" Value="#1A0F3460" />
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Row 0: Header + Action Buttons -->
+        <Border Grid.Row="0" Background="{StaticResource CardBg}" CornerRadius="8,8,0,0" Padding="12,8">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="&#x1F4DD; 规则编辑器" FontSize="14" FontWeight="SemiBold"
+                           VerticalAlignment="Center" />
+                <Button Grid.Column="1" Content="&#x2795; 新建规则" Click="AddRule_Click"
+                        Width="90" Height="28" FontSize="11" Margin="0,0,4,0" />
+                <Button Grid.Column="2" Content="&#x1F4BE; 保存配置" Click="SaveProfile_Click"
+                        Width="90" Height="28" FontSize="11" />
+            </Grid>
+        </Border>
+
+        <!-- Row 1: Rule List -->
+        <Border Grid.Row="1" Background="{StaticResource CardBg}" Padding="12,4">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <ListBox x:Name="RuleListBox" Grid.Row="0"
+                         ItemTemplate="{StaticResource RuleListItemTemplate}"
+                         SelectionChanged="RuleList_SelectionChanged"
+                         Background="Transparent" BorderThickness="0"
+                         MaxHeight="180"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListBoxItem">
+                                        <ContentPresenter />
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                </ListBox>
+                <TextBlock x:Name="EmptyRulesHint" Grid.Row="1"
+                           Text="暂无规则，点击 &#x2795; 新建" FontSize="11"
+                           Foreground="{StaticResource TextSecondaryBrush}"
+                           HorizontalAlignment="Center" Margin="0,4"
+                           Visibility="Collapsed" />
+            </Grid>
+        </Border>
+
+        <!-- Row 2: Editor Form -->
+        <Border Grid.Row="2" Background="{StaticResource CardBg}" CornerRadius="0,0,8,8" Padding="12,8">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" x:Name="EditorScroll">
+                <StackPanel x:Name="EditorForm" Visibility="Collapsed">
+                    <!-- === CONDITION BLOCK === -->
+                    <Border Background="{StaticResource BgMedium}" CornerRadius="6" Padding="10" Margin="0,0,0,8">
+                        <StackPanel>
+                            <TextBlock Text="&#x1F3AF; 触发条件" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,6" />
+
+                            <!-- Buttons (all must match) -->
+                            <TextBlock Text="按键（必须全部按下）" FontSize="11"
+                                       Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,2" />
+                            <ItemsControl x:Name="ButtonsAllList" ItemTemplate="{StaticResource ButtonCheckTemplate}" Margin="0,0,0,6">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                            </ItemsControl>
+
+                            <!-- Buttons (any match) -->
+                            <TextBlock Text="按键（任一按下即可）" FontSize="11"
+                                       Foreground="{StaticResource TextSecondaryBrush}" Margin="0,0,0,2" />
+                            <ItemsControl x:Name="ButtonsAnyList" ItemTemplate="{StaticResource ButtonCheckTemplate}" Margin="0,0,0,6">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                            </ItemsControl>
+
+                            <!-- Trigger ranges -->
+                            <Grid Margin="0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="40" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="LT 范围" FontSize="11" Width="55"
+                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                                <Slider Grid.Column="1" x:Name="LtMinSlider" Minimum="0" Maximum="255"
+                                        SmallChange="1" LargeChange="16"
+                                        ValueChanged="TriggerSlider_Changed" />
+                                <TextBlock Grid.Column="2" x:Name="LtMinLabel" Text="0" FontSize="11" Width="36"
+                                           Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Right"
+                                           VerticalAlignment="Center" Margin="4,0,0,0" />
+                            </Grid>
+                            <Grid Margin="0,2">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="40" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="" FontSize="11" Width="55" />
+                                <Slider Grid.Column="1" x:Name="LtMaxSlider" Minimum="0" Maximum="255"
+                                        Value="255" SmallChange="1" LargeChange="16"
+                                        ValueChanged="TriggerSlider_Changed" />
+                                <TextBlock Grid.Column="2" x:Name="LtMaxLabel" Text="255" FontSize="11" Width="36"
+                                           Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Right"
+                                           VerticalAlignment="Center" Margin="4,0,0,0" />
+                            </Grid>
+
+                            <Grid Margin="0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="40" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="RT 范围" FontSize="11" Width="55"
+                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                                <Slider Grid.Column="1" x:Name="RtMinSlider" Minimum="0" Maximum="255"
+                                        SmallChange="1" LargeChange="16"
+                                        ValueChanged="TriggerSlider_Changed" />
+                                <TextBlock Grid.Column="2" x:Name="RtMinLabel" Text="0" FontSize="11" Width="36"
+                                           Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Right"
+                                           VerticalAlignment="Center" Margin="4,0,0,0" />
+                            </Grid>
+                            <Grid Margin="0,2">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="40" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="" FontSize="11" Width="55" />
+                                <Slider Grid.Column="1" x:Name="RtMaxSlider" Minimum="0" Maximum="255"
+                                        Value="255" SmallChange="1" LargeChange="16"
+                                        ValueChanged="TriggerSlider_Changed" />
+                                <TextBlock Grid.Column="2" x:Name="RtMaxLabel" Text="255" FontSize="11" Width="36"
+                                           Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Right"
+                                           VerticalAlignment="Center" Margin="4,0,0,0" />
+                            </Grid>
+
+                            <!-- Stick magnitude -->
+                            <Grid Margin="0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="40" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="左摇杆幅度" FontSize="11" Width="55"
+                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                                <Slider Grid.Column="1" x:Name="LeftStickSlider" Minimum="0" Maximum="32768"
+                                        SmallChange="500" LargeChange="2000"
+                                        ValueChanged="StickSlider_Changed" />
+                                <TextBlock Grid.Column="2" x:Name="LeftStickLabel" Text="0" FontSize="11" Width="36"
+                                           Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Right"
+                                           VerticalAlignment="Center" Margin="4,0,0,0" />
+                            </Grid>
+                            <Grid Margin="0,2">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="40" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="右摇杆幅度" FontSize="11" Width="55"
+                                           Foreground="{StaticResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                                <Slider Grid.Column="1" x:Name="RightStickSlider" Minimum="0" Maximum="32768"
+                                        SmallChange="500" LargeChange="2000"
+                                        ValueChanged="StickSlider_Changed" />
+                                <TextBlock Grid.Column="2" x:Name="RightStickLabel" Text="0" FontSize="11" Width="36"
+                                           Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Right"
+                                           VerticalAlignment="Center" Margin="4,0,0,0" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- === EFFECT BLOCK === -->
+                    <Border Background="{StaticResource BgMedium}" CornerRadius="6" Padding="10" Margin="0,0,0,8">
+                        <StackPanel>
+                            <TextBlock Text="&#x1F4A5; 触发效果" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,6" />
+
+                            <!-- Type -->
+                            <Grid Margin="0,2">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="55" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="类型" FontSize="11" VerticalAlignment="Center"
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                <ComboBox Grid.Column="1" x:Name="EffectTypeCombo" Height="26" FontSize="11"
+                                          SelectionChanged="EffectType_Changed" />
+                            </Grid>
+
+                            <!-- Mode -->
+                            <Grid Margin="0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="55" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="模式" FontSize="11" VerticalAlignment="Center"
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                <ComboBox Grid.Column="1" x:Name="EffectModeCombo" Height="26" FontSize="11"
+                                          SelectionChanged="MarkDirty" />
+                            </Grid>
+
+                            <!-- Target -->
+                            <Grid Margin="0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="55" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="目标" FontSize="11" VerticalAlignment="Center"
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                <ComboBox Grid.Column="1" x:Name="EffectTargetCombo" Height="26" FontSize="11"
+                                          SelectionChanged="MarkDirty" />
+                            </Grid>
+
+                            <!-- Intensity -->
+                            <Grid Margin="0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="55" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="40" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="力度" FontSize="11" VerticalAlignment="Center"
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                <Slider Grid.Column="1" x:Name="IntensitySlider" Minimum="0" Maximum="255"
+                                        Value="128" SmallChange="1" LargeChange="16"
+                                        ValueChanged="EffectSlider_Changed" />
+                                <TextBlock Grid.Column="2" x:Name="IntensityLabel" Text="128" FontSize="11" Width="36"
+                                           Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Right"
+                                           VerticalAlignment="Center" Margin="4,0,0,0" />
+                            </Grid>
+
+                            <!-- Speed -->
+                            <Grid Margin="0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="55" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="40" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="速度" FontSize="11" VerticalAlignment="Center"
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                <Slider Grid.Column="1" x:Name="SpeedSlider" Minimum="0" Maximum="255"
+                                        Value="128" SmallChange="1" LargeChange="16"
+                                        ValueChanged="EffectSlider_Changed" />
+                                <TextBlock Grid.Column="2" x:Name="SpeedLabel" Text="128" FontSize="11" Width="36"
+                                           Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Right"
+                                           VerticalAlignment="Center" Margin="4,0,0,0" />
+                            </Grid>
+
+                            <!-- Duration -->
+                            <Grid Margin="0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="55" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="40" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="持续" FontSize="11" VerticalAlignment="Center"
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                <TextBox Grid.Column="1" x:Name="DurationBox" Height="24" FontSize="11"
+                                         Text="0" TextChanged="MarkDirty"
+                                         Background="{StaticResource BgMedium}"
+                                         Foreground="{StaticResource TextPrimaryBrush}"
+                                         BorderBrush="{StaticResource BorderBrush}" />
+                                <TextBlock Grid.Column="2" Text="ms" FontSize="11" Width="36"
+                                           Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Right"
+                                           VerticalAlignment="Center" Margin="4,0,0,0" />
+                            </Grid>
+
+                            <!-- Priority -->
+                            <Grid Margin="0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="55" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="40" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="优先级" FontSize="11" VerticalAlignment="Center"
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                <TextBox Grid.Column="1" x:Name="PriorityBox" Height="24" FontSize="11"
+                                         Text="100" TextChanged="MarkDirty"
+                                         Background="{StaticResource BgMedium}"
+                                         Foreground="{StaticResource TextPrimaryBrush}"
+                                         BorderBrush="{StaticResource BorderBrush}" />
+                            </Grid>
+
+                            <!-- Cooldown -->
+                            <Grid Margin="0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="55" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="40" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="冷却" FontSize="11" VerticalAlignment="Center"
+                                           Foreground="{StaticResource TextSecondaryBrush}" />
+                                <TextBox Grid.Column="1" x:Name="CooldownBox" Height="24" FontSize="11"
+                                         Text="0" TextChanged="MarkDirty"
+                                         Background="{StaticResource BgMedium}"
+                                         Foreground="{StaticResource TextPrimaryBrush}"
+                                         BorderBrush="{StaticResource BorderBrush}" />
+                                <TextBlock Grid.Column="2" Text="ms" FontSize="11" Width="36"
+                                           Foreground="{StaticResource TextSecondaryBrush}" TextAlignment="Right"
+                                           VerticalAlignment="Center" Margin="4,0,0,0" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Delete Button -->
+                    <Button Content="&#x1F5D1; 删除选中规则" Click="DeleteRule_Click"
+                            Height="30" FontSize="12" Margin="0,0,0,4"
+                            Foreground="{StaticResource ErrorBrush}" Background="Transparent" />
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</UserControl>

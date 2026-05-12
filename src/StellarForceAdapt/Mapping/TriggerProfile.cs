@@ -6,6 +6,9 @@ namespace StellarForceAdapt.Mapping;
 
 public class TriggerProfile
 {
+    [JsonIgnore]
+    public string? FilePath { get; set; }
+
     [JsonPropertyName("name")]
     public string Name { get; set; } = "Default";
 
@@ -23,7 +26,9 @@ public class TriggerProfile
         try
         {
             var json = File.ReadAllText(path);
-            return JsonSerializer.Deserialize<TriggerProfile>(json, s_jsonOptions);
+            var profile = JsonSerializer.Deserialize<TriggerProfile>(json, s_jsonOptions);
+            if (profile != null) profile.FilePath = path;
+            return profile;
         }
         catch (Exception ex)
         {

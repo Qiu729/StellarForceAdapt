@@ -33,6 +33,7 @@ public partial class MainWindow : Window
         _device.ConnectionChanged += OnControllerConnectionChanged;
         _engine.StatusChanged += OnEngineStatusChanged;
         _engine.EffectTriggered += OnEffectTriggered;
+        RuleEditor.ProfileSaved += OnEditorProfileSaved;
 
         RefreshProfiles_Click(null!, null!);
         ScanController();
@@ -47,6 +48,14 @@ public partial class MainWindow : Window
         _device.Dispose();
         _engine.Dispose();
         base.OnClosed(e);
+    }
+
+    /// <summary>
+    /// Public log entry point for RuleEditorPanel to write to the UI log.
+    /// </summary>
+    public void LogMessage(string message)
+    {
+        Log(message);
     }
 
     private void StartUiTimer()
@@ -141,6 +150,28 @@ public partial class MainWindow : Window
     private void OnEffectTriggered(object? sender, string effectName)
     {
         Dispatcher.Invoke(() => Log($"⚡ 触发: {effectName}"));
+    }
+
+    private void OnEditorProfileSaved(object? sender, EventArgs e)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            // Refresh profile list while keeping current selection
+            string? selectedId = (ProfileCombo.SelectedItem as TriggerProfile)?.Name;
+            RefreshProfiles_Click(null!, null!);
+
+            if (selectedId != null)
+            {
+                for (int i = 0; i < ProfileCombo.Items.Count; i++)
+                {
+                    if (ProfileCombo.Items[i] is TriggerProfile p && p.Name == selectedId)
+                    {
+                        ProfileCombo.SelectedIndex = i;
+                        break;
+                    }
+                }
+            }
+        });
     }
 
     private void ToggleEngine_Click(object sender, RoutedEventArgs e)
@@ -238,6 +269,9 @@ public partial class MainWindow : Window
             ProfileDesc.Text = $"{profile.Description}\n版本: {profile.Version} · 规则数: {profile.Rules.Count}";
             if (_isRunning)
                 _engine.SetProfile(profile);
+
+            // Load into editor
+            RuleEditor.LoadProfile(profile);
         }
     }
 
