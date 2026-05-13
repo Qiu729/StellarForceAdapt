@@ -9,8 +9,9 @@
       "priority": 100,
       "cooldown_ms": 0,
       "condition": {
-        "buttons": 0,
-        "buttons_any": 0,
+        "precondition_buttons": 0,
+        "precondition_left_trigger": false,
+        "precondition_right_trigger": false,
         "left_trigger_min": 0,
         "left_trigger_max": 255,
         "right_trigger_min": 30,
@@ -31,8 +32,9 @@
       "priority": 100,
       "cooldown_ms": 0,
       "condition": {
-        "buttons": 0,
-        "buttons_any": 0,
+        "precondition_buttons": 0,
+        "precondition_left_trigger": false,
+        "precondition_right_trigger": false,
         "left_trigger_min": 30,
         "left_trigger_max": 255,
         "right_trigger_min": 0,
